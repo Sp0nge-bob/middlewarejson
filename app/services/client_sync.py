@@ -7,6 +7,8 @@ from app.services.panel_api import (
     PANEL_WEB_BASE_PATH_KEY,
     PanelApiClient,
     PanelApiError,
+    parse_group_members,
+    parse_group_names,
     resolve_panel_token,
     resolve_panel_web_base_path,
 )
@@ -14,57 +16,103 @@ from app.services.panel_api import (
 logger = logging.getLogger(__name__)
 
 
-def _client_from_panel_row(row: dict[str, Any]) -> ClientRecord | None:
-    if row.get("enable") is False:
-        return None
-
-    sub_id = str(row.get("subId") or row.get("sub_id") or "").strip()
-    if not sub_id:
-        return None
-
-    return ClientRecord(
-        sub_id=sub_id,
-        group_name=str(row.get("groupName") or row.get("group_name") or "").strip(),
-        email=str(row.get("email") or "").strip(),
-        enable=True,
-    )
-
-
-def fetch_panel_clients_sync(settings: Settings, repository: CatalogRepository) -> list[dict[str, Any]]:
+def _make_panel_client(settings: Settings, repository: CatalogRepository) -> PanelApiClient:
     token = resolve_panel_token(settings, repository.get_setting("panel_api_token"))
     web_path = resolve_panel_web_base_path(
         settings,
         repository.get_setting(PANEL_WEB_BASE_PATH_KEY),
     )
-    client = PanelApiClient(settings, token, web_base_path=web_path)
-    return client.fetch_clients_list()
+    return PanelApiClient(settings, token, web_base_path=web_path)
+
+
+def _build_email_lookup(clients: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    lookup: dict[str, dict[str, Any]] = {}
+    for row in clients:
+        email = str(row.get("email") or "").strip().lower()
+        if email:
+            lookup[email] = row
+    return lookup
+
+
+def _extract_email(member: dict[str, Any]) -> str:
+    return str(member.get("email") or member.get("Email") or "").strip()
+
+
+def _resolve_client_record(
+    group_name: str,
+    member: dict[str, Any],
+    email_lookup: dict[str, dict[str, Any]],
+    panel_client: PanelApiClient,
+) -> ClientRecord | None:
+    email = _extract_email(member)
+    if not email:
+        return None
+
+    sub_id = str(member.get("subId") or member.get("sub_id") or "").strip()
+    enable = member.get("enable") is not False
+
+    if not sub_id:
+        cached = email_lookup.get(email.lower())
+        if cached is not None:
+            sub_id = str(cached.get("subId") or cached.get("sub_id") or "").strip()
+            enable = cached.get("enable") is not False
+
+    if not sub_id:
+        detail = panel_client.fetch_client_by_email(email)
+        if detail is not None:
+            sub_id = str(detail.get("subId") or detail.get("sub_id") or "").strip()
+            enable = detail.get("enable") is not False
+
+    if not sub_id or not enable:
+        return None
+
+    return ClientRecord(
+        sub_id=sub_id,
+        group_name=group_name,
+        email=email,
+        enable=True,
+    )
+
+
+def collect_clients_from_groups(panel_client: PanelApiClient) -> tuple[list[ClientRecord], int]:
+    groups_raw = panel_client.fetch_groups()
+    group_names = parse_group_names(groups_raw)
+    email_lookup = _build_email_lookup(panel_client.fetch_clients_list())
+
+    clients: list[ClientRecord] = []
+    seen_sub_ids: set[str] = set()
+
+    for group_name in group_names:
+        members = panel_client.fetch_group_emails(group_name)
+        for member in members:
+            record = _resolve_client_record(group_name, member, email_lookup, panel_client)
+            if record is None or record.sub_id in seen_sub_ids:
+                continue
+            seen_sub_ids.add(record.sub_id)
+            clients.append(record)
+
+    return clients, len(group_names)
 
 
 def sync_clients(settings: Settings, repository: CatalogRepository) -> dict[str, int]:
     try:
-        clients_raw = fetch_panel_clients_sync(settings, repository)
+        panel_client = _make_panel_client(settings, repository)
+        clients, groups_count = collect_clients_from_groups(panel_client)
     except PanelApiError as exc:
         raise ValueError(str(exc)) from exc
 
-    clients: list[ClientRecord] = []
-    for row in clients_raw:
-        client = _client_from_panel_row(row)
-        if client is not None:
-            clients.append(client)
-
     upserted, removed = repository.upsert_clients(clients)
-    groups = {client.group_name for client in clients if client.group_name}
 
     logger.info(
-        "client sync complete: panel_clients=%s upserted=%s removed=%s groups=%s",
-        len(clients_raw),
+        "client sync complete: groups=%s clients=%s upserted=%s removed=%s",
+        groups_count,
+        len(clients),
         upserted,
         removed,
-        len(groups),
     )
     return {
-        "panel_clients": len(clients_raw),
+        "groups": groups_count,
+        "panel_clients": len(clients),
         "upserted": upserted,
         "removed": removed,
-        "groups": len(groups),
     }

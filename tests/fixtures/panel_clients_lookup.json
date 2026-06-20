@@ -1,0 +1,22 @@
+[
+  {
+    "email": "premium@example.com",
+    "subId": "client_a_sub_id12",
+    "enable": true
+  },
+  {
+    "email": "basic@example.com",
+    "subId": "client_b_sub_id12",
+    "enable": true
+  },
+  {
+    "email": "disabled@example.com",
+    "subId": "disabled_sub_id",
+    "enable": false
+  },
+  {
+    "email": "nogroup@example.com",
+    "subId": "any_sub_id_12345",
+    "enable": true
+  }
+]

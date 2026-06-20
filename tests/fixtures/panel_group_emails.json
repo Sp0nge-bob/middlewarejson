@@ -1,0 +1,9 @@
+{
+  "premium": [
+    "premium@example.com",
+    "disabled@example.com"
+  ],
+  "basic": [
+    "basic@example.com"
+  ]
+}
