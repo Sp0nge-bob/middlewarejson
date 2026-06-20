@@ -7,6 +7,8 @@ from rich.table import Table
 from app.cli_ui import (
     CANCEL_HINT,
     confirm_prompt,
+    secret_prompt,
+    text_prompt,
     console,
     print_error,
     print_field,
@@ -267,7 +269,7 @@ def _do_edit_panel_settings(repo: CatalogRepository) -> None:
             if settings.panel_api_base_url:
                 print_warning("Сначала уберите PANEL_API_BASE_URL из .env")
                 continue
-            new_url = typer.prompt("URL панели", default=base_url).strip()
+            new_url = text_prompt("URL панели", default=base_url).strip()
             if new_url:
                 repo.set_setting(PANEL_API_BASE_URL_KEY, new_url)
                 print_success("URL панели сохранён")
@@ -275,7 +277,7 @@ def _do_edit_panel_settings(repo: CatalogRepository) -> None:
             if settings.panel_web_base_path:
                 print_warning("Сначала уберите PANEL_WEB_BASE_PATH из .env")
                 continue
-            new_path = typer.prompt(
+            new_path = text_prompt(
                 "Web base path панели",
                 default=web_path,
             ).strip()
@@ -285,7 +287,7 @@ def _do_edit_panel_settings(repo: CatalogRepository) -> None:
             if settings.panel_api_token:
                 print_warning("Сначала уберите PANEL_API_TOKEN из .env")
                 continue
-            new_token = typer.prompt("API token", hide_input=True).strip()
+            new_token = secret_prompt("API token").strip()
             if new_token:
                 repo.set_setting(PANEL_API_TOKEN_KEY, new_token)
                 print_success("API token сохранён")
@@ -298,14 +300,14 @@ def _prompt_panel_settings(repo: CatalogRepository) -> bool:
         "[yellow]Panel API не настроен.[/yellow] "
         "Нужны base path и API token из 3x-ui → Settings → Security."
     )
-    base_path = typer.prompt(
+    base_path = text_prompt(
         "Web base path панели",
         default=settings.panel_web_base_path or "",
     ).strip()
     if base_path:
         repo.set_setting(PANEL_WEB_BASE_PATH_KEY, base_path)
 
-    token = typer.prompt("API token", hide_input=True).strip()
+    token = secret_prompt("API token").strip()
     if not token:
         console.print("[red]Token обязателен[/red]")
         return False
@@ -574,7 +576,7 @@ def run_interactive_menu() -> None:
 
     while True:
         _print_interactive_menu()
-        choice = typer.prompt("Выбор", default="0").strip()
+        choice = text_prompt("Выбор", default="0").strip()
 
         if choice == "0":
             console.print("[dim]До свидания[/dim]")

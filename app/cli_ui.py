@@ -20,9 +20,8 @@ def is_exit_choice(value: str) -> bool:
     return value.strip().casefold() in _EXIT_ALIASES
 
 
-def _decode_stdin_line() -> str:
-    line = sys.stdin.buffer.readline()
-    if not line:
+def _decode_bytes(data: bytes) -> str:
+    if not data:
         return ""
 
     candidates: list[str] = []
@@ -33,10 +32,96 @@ def _decode_stdin_line() -> str:
 
     for encoding in candidates:
         try:
-            return line.decode(encoding).strip()
+            return data.decode(encoding).strip()
         except UnicodeDecodeError:
             continue
-    return line.decode("utf-8", errors="replace").strip()
+    return data.decode("utf-8", errors="replace").strip()
+
+
+def _decode_stdin_line() -> str:
+    line = sys.stdin.buffer.readline()
+    if not line:
+        return ""
+    return _decode_bytes(line.rstrip(b"\r\n"))
+
+
+def text_prompt(
+    message: str,
+    *,
+    default: str = "",
+    hide_input: bool = False,
+) -> str:
+    """Текстовый ввод без typer.prompt — кириллица в терминалах с нестандартной кодировкой."""
+    if hide_input:
+        return secret_prompt(message)
+
+    if default:
+        console.print(f"{message} [{default}]: ", end="")
+    else:
+        console.print(f"{message}: ", end="")
+    sys.stdout.flush()
+
+    try:
+        value = _decode_stdin_line()
+    except (EOFError, KeyboardInterrupt):
+        console.print()
+        return default
+    if not value and default:
+        return default
+    return value
+
+
+def secret_prompt(message: str) -> str:
+    """Скрытый ввод без typer.prompt (API token и т.п.)."""
+    if not sys.stdin.isatty():
+        console.print(f"{message}: ", end="")
+        sys.stdout.flush()
+        try:
+            return _decode_stdin_line()
+        except (EOFError, KeyboardInterrupt):
+            console.print()
+            return ""
+
+    try:
+        import termios
+        import tty
+
+        console.print(f"{message}: ", end="")
+        sys.stdout.flush()
+        fd = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+        try:
+            tty.setcbreak(fd)
+            chunks: list[bytes] = []
+            while True:
+                ch = sys.stdin.buffer.read(1)
+                if ch in (b"\n", b"\r"):
+                    console.print()
+                    break
+                if ch in (b"\x7f", b"\x08"):
+                    if chunks:
+                        chunks.pop()
+                        console.print("\b \b", end="")
+                        sys.stdout.flush()
+                    continue
+                if ch == b"\x03":
+                    raise KeyboardInterrupt
+                chunks.append(ch)
+                console.print("*", end="")
+                sys.stdout.flush()
+            return _decode_bytes(b"".join(chunks))
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+    except ImportError:
+        import getpass
+
+        try:
+            return getpass.getpass(f"{message}: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return ""
+    except (EOFError, KeyboardInterrupt, OSError):
+        console.print()
+        return ""
 
 
 def confirm_prompt(message: str, *, default: bool = False) -> bool:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import typer
 from rich.table import Table
 
 from app.country_flags import (
@@ -28,6 +27,7 @@ from app.cli_ui import (
     print_success,
     print_warning,
     prompt_line,
+    text_prompt,
 )
 from app.db.repository import CatalogRepository, ClientRecord
 from app.models.balancer import (
@@ -90,7 +90,7 @@ def _prompt_client_sub_id(clients: list[ClientRecord]) -> str | None:
     )
 
     while True:
-        query = typer.prompt(f"Поиск, {CANCEL_HINT}", default="").strip()
+        query = text_prompt(f"Поиск, {CANCEL_HINT}", default="").strip()
         if is_exit_choice(query):
             print_cancelled()
             return None
@@ -134,7 +134,7 @@ def _prompt_client_sub_id(clients: list[ClientRecord]) -> str | None:
         for index, client in enumerate(shown):
             console.print(f"  {index}. {_client_display_label(client)}")
 
-        choice = typer.prompt(f"Номер клиента, {CANCEL_HINT}").strip()
+        choice = text_prompt(f"Номер клиента, {CANCEL_HINT}").strip()
         if is_exit_choice(choice):
             print_cancelled()
             return None
@@ -153,7 +153,7 @@ def prompt_strategy(default: str = "roundRobin") -> str:
         suffix = f" — {hint}" if hint else ""
         mark = " [dim](по умолчанию)[/dim]" if strategy == default else ""
         console.print(f"  {index}. {label}{suffix}{mark}")
-    choice = typer.prompt("Выбор", default="1").strip()
+    choice = text_prompt("Выбор", default="1").strip()
     try:
         selected = int(choice) - 1
         if 0 <= selected < len(BALANCER_STRATEGIES):
@@ -170,7 +170,7 @@ def prompt_scope(repo: CatalogRepository) -> tuple[str, str] | None:
     console.print("[bold]Область применения[/bold]")
     for index, scope in enumerate(SCOPE_CHOICES, start=1):
         console.print(f"  {index}. {BALANCER_SCOPES[scope]}")
-    choice = typer.prompt(f"Выбор, {CANCEL_HINT}", default="1").strip()
+    choice = text_prompt(f"Выбор, {CANCEL_HINT}", default="1").strip()
     if is_exit_choice(choice):
         print_cancelled()
         return None
@@ -190,14 +190,14 @@ def prompt_scope(repo: CatalogRepository) -> tuple[str, str] | None:
         console.print("[bold]Выберите группу[/bold]")
         for index, group_name in enumerate(groups):
             console.print(f"  {index}. {group_name}")
-        group_choice = typer.prompt(f"Номер группы, {CANCEL_HINT}").strip()
+        group_choice = text_prompt(f"Номер группы, {CANCEL_HINT}").strip()
         if is_exit_choice(group_choice):
             print_cancelled()
             return None
         try:
             return "group", groups[int(group_choice)]
         except (ValueError, IndexError):
-            group_name = typer.prompt(f"Имя группы, {CANCEL_HINT}").strip()
+            group_name = text_prompt(f"Имя группы, {CANCEL_HINT}").strip()
             if is_exit_choice(group_name):
                 print_cancelled()
                 return None
@@ -244,7 +244,7 @@ def prompt_happ_remarks(*, default: str = "Balance", current: str | None = None)
 
     country_code: str | None = None
     while True:
-        flag_choice = typer.prompt(
+        flag_choice = text_prompt(
             f"Флаг (номер, код ch/se или {CUSTOM_FLAG_MENU_KEY} — другой), {CANCEL_HINT}",
             default=flag_default,
         ).strip()
@@ -261,7 +261,7 @@ def prompt_happ_remarks(*, default: str = "Balance", current: str | None = None)
             break
         if resolved is OTHER_FLAG_CHOICE:
             while True:
-                custom_code = typer.prompt(
+                custom_code = text_prompt(
                     f"Код страны (2 буквы, например ch), {CANCEL_HINT}",
                 ).strip()
                 if is_exit_choice(custom_code):
@@ -278,7 +278,7 @@ def prompt_happ_remarks(*, default: str = "Balance", current: str | None = None)
         country_code = resolved
         break
 
-    name = typer.prompt("Название", default=default_name).strip()
+    name = text_prompt("Название", default=default_name).strip()
     if is_exit_choice(name):
         print_cancelled()
         return None
@@ -296,7 +296,7 @@ def _prompt_member_indices(rows: list) -> list[str] | None:
         print_warning("Каталог инбаундов пуст. Сначала выполните синхронизацию.")
         return None
 
-    selection = typer.prompt(
+    selection = text_prompt(
         f"Номера из колонки # (например 0,2,5), {CANCEL_HINT}"
     ).strip()
     if is_exit_choice(selection):
@@ -377,7 +377,7 @@ def configure_balancer_interactive(
         console.print("  4. Состав инбаундов")
         console.print("  0. Назад")
 
-        choice = typer.prompt("Выбор", default="0").strip()
+        choice = text_prompt("Выбор", default="0").strip()
         if choice == "0":
             return
 
@@ -479,7 +479,7 @@ def delete_balancer_interactive(repo: CatalogRepository, balancers: list) -> Non
         print_warning("Балансировщиков нет")
         return
 
-    choice = typer.prompt(
+    choice = text_prompt(
         f"Номер или идентификатор для удаления (Enter — отмена, {CANCEL_HINT})",
         default="",
     ).strip()
@@ -534,7 +534,7 @@ def run_balancers_menu(
             if not balancers:
                 print_warning("Сначала создайте балансировщик")
                 continue
-            pick = typer.prompt(
+            pick = text_prompt(
                 f"Номер или идентификатор (Enter — отмена, {CANCEL_HINT})",
                 default="",
             ).strip()
