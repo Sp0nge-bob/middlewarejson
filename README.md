@@ -53,8 +53,8 @@ curl -s http://127.0.0.1:8080/health
 Скопируйте JSON URL из карточки клиента в 3x-ui и разбейте на base + path:
 
 ```
-https://node1.example.com/<ваш-путь>/abcd1234efgh5678
-  → UPSTREAM_BASE_URL=https://node1.example.com
+https://example.com/<ваш-путь>/abcd1234efgh5678
+  → UPSTREAM_BASE_URL=https://example.com
   → UPSTREAM_JSON_PATH=/<ваш-путь>
 ```
 
