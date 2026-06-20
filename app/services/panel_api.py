@@ -1,4 +1,6 @@
 import logging
+import time
+from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote, urljoin
 
@@ -69,6 +71,18 @@ def parse_group_members(obj: Any) -> list[dict[str, Any]]:
 
 class PanelApiError(Exception):
     pass
+
+
+@dataclass(frozen=True)
+class PanelProbeResult:
+    method: str
+    url: str
+    status_code: int | None
+    elapsed_ms: float
+    ok: bool
+    summary: str
+    inbound_count: int | None = None
+    error: str | None = None
 
 
 class PanelApiClient:
@@ -174,7 +188,133 @@ class PanelApiClient:
         obj = payload.get("obj")
         return obj if isinstance(obj, dict) else None
 
+    def probe_connection(self) -> PanelProbeResult:
+        path = "/panel/api/inbounds/list"
+        url = urljoin(self._base_url(), path.lstrip("/"))
+        headers = {"Authorization": f"Bearer {self._token}"}
+        started = time.perf_counter()
+
+        try:
+            with httpx.Client(
+                timeout=self._settings.request_timeout_sec,
+                verify=self._settings.resolved_panel_verify_ssl(),
+            ) as client:
+                response = client.get(url, headers=headers)
+        except httpx.HTTPError as exc:
+            elapsed_ms = (time.perf_counter() - started) * 1000
+            return PanelProbeResult(
+                method="GET",
+                url=url,
+                status_code=None,
+                elapsed_ms=elapsed_ms,
+                ok=False,
+                summary=f"ошибка сети: {exc}",
+                error=str(exc),
+            )
+
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        status_code = response.status_code
+
+        if status_code == 401:
+            return PanelProbeResult(
+                method="GET",
+                url=url,
+                status_code=status_code,
+                elapsed_ms=elapsed_ms,
+                ok=False,
+                summary=f"HTTP {status_code} Unauthorized",
+                error="Panel API authentication failed (401)",
+            )
+
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            body = response.text.strip().replace("\n", " ")
+            if len(body) > 160:
+                body = body[:157] + "..."
+            summary = f"HTTP {status_code}"
+            if body:
+                summary += f", body={body}"
+            return PanelProbeResult(
+                method="GET",
+                url=url,
+                status_code=status_code,
+                elapsed_ms=elapsed_ms,
+                ok=False,
+                summary=summary,
+                error=str(exc),
+            )
+
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            body = response.text.strip().replace("\n", " ")
+            if len(body) > 160:
+                body = body[:157] + "..."
+            return PanelProbeResult(
+                method="GET",
+                url=url,
+                status_code=status_code,
+                elapsed_ms=elapsed_ms,
+                ok=False,
+                summary=f"HTTP {status_code}, не JSON: {body or '(пусто)'}",
+                error=str(exc),
+            )
+
+        if not isinstance(payload, dict):
+            return PanelProbeResult(
+                method="GET",
+                url=url,
+                status_code=status_code,
+                elapsed_ms=elapsed_ms,
+                ok=False,
+                summary=f"HTTP {status_code}, неожиданный тип ответа: {type(payload).__name__}",
+                error=f"Unexpected Panel API response type: {type(payload)}",
+            )
+
+        if payload.get("success") is False:
+            message = payload.get("msg") or payload.get("message") or "unknown error"
+            return PanelProbeResult(
+                method="GET",
+                url=url,
+                status_code=status_code,
+                elapsed_ms=elapsed_ms,
+                ok=False,
+                summary=f"HTTP {status_code}, success=false, msg={message}",
+                error=f"Panel API error: {message}",
+            )
+
+        obj = payload.get("obj")
+        if obj is None:
+            inbound_count = 0
+            summary = f"HTTP {status_code}, success=true, obj=null"
+        elif isinstance(obj, list):
+            inbound_count = len(obj)
+            summary = f"HTTP {status_code}, success=true, obj=[{inbound_count} элементов]"
+        else:
+            return PanelProbeResult(
+                method="GET",
+                url=url,
+                status_code=status_code,
+                elapsed_ms=elapsed_ms,
+                ok=False,
+                summary=f"HTTP {status_code}, success=true, obj={type(obj).__name__}",
+                error="inbounds/list obj is not a list",
+            )
+
+        return PanelProbeResult(
+            method="GET",
+            url=url,
+            status_code=status_code,
+            elapsed_ms=elapsed_ms,
+            ok=True,
+            summary=summary,
+            inbound_count=inbound_count,
+        )
+
     def test_connection(self) -> int:
-        inbounds = self.fetch_inbounds_list()
-        logger.info("panel api ok: %s inbounds", len(inbounds))
-        return len(inbounds)
+        result = self.probe_connection()
+        if not result.ok:
+            raise PanelApiError(result.error or result.summary)
+        logger.info("panel api ok: %s inbounds", result.inbound_count)
+        return result.inbound_count or 0

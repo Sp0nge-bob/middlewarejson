@@ -5,7 +5,9 @@ from app.cli_ui import (
     confirm_prompt,
     console,
     print_error,
+    print_field,
     print_header,
+    print_info,
     print_menu_item,
     print_section,
     print_success,
@@ -192,13 +194,17 @@ def _do_panel_test() -> None:
         settings,
         repo.get_setting(PANEL_WEB_BASE_PATH_KEY),
     )
-    try:
-        count = PanelApiClient(settings, token, web_base_path=web_path).test_connection()
-    except PanelApiError as exc:
-        console.print(f"[red]Panel API error: {exc}[/red]")
-        return
+    result = PanelApiClient(settings, token, web_base_path=web_path).probe_connection()
 
-    console.print(f"[green]Panel API OK: {count} inbounds[/green]")
+    console.print()
+    print_field("Запрос", f"{result.method} {result.url}")
+    print_field("Ответ", result.summary)
+    print_field("Время", f"{result.elapsed_ms:.0f} мс")
+
+    if result.ok:
+        print_success(f"Подключение OK — {result.inbound_count} инбаундов")
+    else:
+        print_error(result.error or "Подключение не удалось")
 
 
 def _do_catalog_sync() -> None:
@@ -374,33 +380,46 @@ def _do_sync_all() -> None:
     )
 
 
+_MENU_HELP = frozenset({"?", "help", "h", "меню", "m"})
+
+
+def _print_interactive_menu() -> None:
+    print_section("Настройки")
+    print_menu_item(1, "Показать настройки панели")
+    print_menu_item(2, "Проверить подключение к панели")
+
+    print_section("Данные панели")
+    print_menu_item(3, "Список инбаундов")
+    print_menu_item(4, "Список групп")
+
+    print_section("Балансировщики")
+    print_menu_item(5, "Создать балансировщик")
+    print_menu_item(6, "Список и настройка балансировщиков")
+    print_menu_item(7, "Удалить балансировщик")
+
+    print_section("Синхронизация")
+    print_menu_item(8, "Синхронизация")
+
+    console.print()
+    print_menu_item(0, "Выход")
+
+
 def run_interactive_menu() -> None:
     print_header(
         "middlewarejson",
         subtitle="трансформация JSON-подписок 3x-ui",
     )
+    _print_interactive_menu()
+    print_info("? — показать меню")
 
     while True:
-        print_section("Настройки")
-        print_menu_item(1, "Показать настройки панели")
-        print_menu_item(2, "Проверить подключение к панели")
+        choice = typer.prompt("Выбор", default="").strip().casefold()
 
-        print_section("Данные панели")
-        print_menu_item(3, "Список инбаундов")
-        print_menu_item(4, "Список групп")
-
-        print_section("Балансировщики")
-        print_menu_item(5, "Создать балансировщик")
-        print_menu_item(6, "Список и настройка балансировщиков")
-        print_menu_item(7, "Удалить балансировщик")
-
-        print_section("Синхронизация")
-        print_menu_item(8, "Синхронизация")
-
-        console.print()
-        print_menu_item(0, "Выход")
-
-        choice = typer.prompt("Выбор", default="0").strip()
+        if choice in _MENU_HELP:
+            _print_interactive_menu()
+            continue
+        if not choice:
+            continue
 
         if choice == "0":
             console.print("[dim]До свидания[/dim]")
