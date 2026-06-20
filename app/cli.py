@@ -12,7 +12,6 @@ from app.cli_ui import (
     print_section,
     print_success,
     print_warning,
-    prompt_menu_choice,
 )
 from app.config import settings
 from app.db.database import Database
@@ -361,9 +360,6 @@ def _do_sync_all() -> None:
     )
 
 
-_MENU_HELP = frozenset({"?", "help", "h", "меню", "m"})
-
-
 def _print_interactive_menu() -> None:
     print_section("Настройки")
     print_menu_item(1, "Показать настройки панели")
@@ -388,17 +384,10 @@ def run_interactive_menu() -> None:
         "middlewarejson",
         subtitle="трансформация JSON-подписок 3x-ui",
     )
-    _print_interactive_menu()
 
     while True:
-        choice = prompt_menu_choice()
-
-        if choice in _MENU_HELP:
-            _print_interactive_menu()
-            continue
-        if not choice:
-            print_warning("Введите номер: 1-6, 0 — выход, ? — полное меню")
-            continue
+        _print_interactive_menu()
+        choice = typer.prompt("Выбор", default="0").strip()
 
         if choice == "0":
             console.print("[dim]До свидания[/dim]")
