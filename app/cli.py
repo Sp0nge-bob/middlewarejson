@@ -32,11 +32,13 @@ from app.services.panel_api import (
     resolve_panel_base_url,
     resolve_panel_token,
     resolve_panel_web_base_path,
+    resolve_upstream_base_url,
 )
 from app.cli_balancer import (
     configure_balancer_interactive,
     run_balancers_menu,
 )
+from app.cli_service import run_install_systemd, run_service_status_menu
 from app.models.balancer import format_scope, format_strategy
 from app.country_flags import apply_flag_prefix
 from app.services.profile_builder import default_balancer_tag
@@ -49,8 +51,10 @@ settings_app = typer.Typer(help="Настройки Panel API")
 catalog_app = typer.Typer(help="Каталог инбаундов из 3x-ui Panel API")
 balancer_app = typer.Typer(help="Балансировщики и их назначение")
 group_app = typer.Typer(help="Группы клиентов 3x-ui")
+service_app = typer.Typer(help="Systemd-служба агента")
 
 app.add_typer(settings_app, name="settings")
+app.add_typer(service_app, name="service")
 app.add_typer(catalog_app, name="catalog")
 app.add_typer(balancer_app, name="balancer")
 app.add_typer(group_app, name="group")
@@ -191,30 +195,52 @@ def _print_env_override_hints() -> None:
         print_warning("API token задан в .env — имеет приоритет над базой")
 
 
-def _do_settings_show() -> None:
+def _do_panel_settings_show() -> None:
     repo = _repo()
     base_url, web_path, token = _resolved_panel_settings(repo)
     balancers = repo.list_balancers()
     assignments = repo.list_group_assignments()
 
     console.print()
-    print_field("База данных", settings.db_path)
     print_field("URL панели", base_url or "—")
     print_field("Web base path", web_path or "—")
     print_field("API token", _mask_token(token))
     print_field("Балансировщиков", str(len(balancers)))
     print_field("Привязок к группам", str(len(assignments)))
+    _print_env_override_hints()
+
+
+def _do_script_settings_show() -> None:
+    repo = _repo()
+    balancers = repo.list_balancers()
+    upstream_base = resolve_upstream_base_url(
+        settings,
+        repo.get_setting(PANEL_API_BASE_URL_KEY),
+    )
+    upstream_path = settings.upstream_json_path.rstrip("/")
     mode = settings.transform_mode.strip().lower()
+
+    console.print()
+    print_field("Агент", f"{settings.agent_host}:{settings.agent_port}")
+    print_field("URL агента", f"http://{settings.agent_host}:{settings.agent_port}")
     print_field("Режим трансформации", settings.transform_mode)
+    print_field("Rules path", settings.rules_path)
+    print_field("База данных", settings.db_path)
+    print_field("Upstream", f"{upstream_base}{upstream_path}/<sub_id>")
     startup_sync = "да" if settings.panel_sync_on_startup else "нет"
     interval = settings.panel_sync_interval.strip() or "выкл"
     print_field("Синхр. при старте", startup_sync)
     print_field("Синхр. интервал", interval)
+    print_info("Параметры скрипта задаются в .env — после изменений перезапустите службу")
     if balancers and mode != "rules":
         print_warning(
             "Балансировщики не применяются в подписке. "
             "Установите TRANSFORM_MODE=rules в .env и перезапустите сервер."
         )
+
+
+def _do_settings_show() -> None:
+    _do_panel_settings_show()
 
 
 def _do_edit_panel_settings(repo: CatalogRepository) -> None:
@@ -517,20 +543,23 @@ def _do_run_server() -> None:
 def _print_interactive_menu() -> None:
     print_section("Настройки")
     print_menu_item(1, "Показать настройки панели")
-    print_menu_item(2, "Проверить подключение к панели")
+    print_menu_item(2, "Показать настройки скрипта")
+    print_menu_item(3, "Проверить подключение к панели")
+    print_menu_item(4, "Проверить состояние скрипта (systemd)")
+    print_menu_item(5, "Установить службу systemd")
 
     print_section("Данные панели")
-    print_menu_item(3, "Список инбаундов")
-    print_menu_item(4, "Список групп")
+    print_menu_item(6, "Список инбаундов")
+    print_menu_item(7, "Список групп")
 
     print_section("Настройка JSON")
-    print_menu_item(5, "Балансировщики")
+    print_menu_item(8, "Балансировщики")
 
     print_section("Синхронизация")
-    print_menu_item(6, "Синхронизация")
+    print_menu_item(9, "Синхронизация")
 
-    print_section("Сервер")
-    print_menu_item(7, f"Запустить агент (uvicorn :{settings.agent_port})")
+    print_section("Отладка")
+    print_menu_item(10, f"Запустить агент вручную (uvicorn :{settings.agent_port})")
 
     console.print()
     print_menu_item(0, "Выход")
@@ -550,20 +579,26 @@ def run_interactive_menu() -> None:
             console.print("[dim]До свидания[/dim]")
             break
         if choice == "1":
-            _do_settings_show()
+            _do_panel_settings_show()
             if confirm_prompt("Изменить настройки панели?", default=False):
                 _do_edit_panel_settings(_repo())
         elif choice == "2":
-            _do_panel_test()
+            _do_script_settings_show()
         elif choice == "3":
-            _do_catalog_list(active_only=False)
+            _do_panel_test()
         elif choice == "4":
-            _do_group_list()
+            run_service_status_menu()
         elif choice == "5":
-            _do_balancers_menu()
+            run_install_systemd()
         elif choice == "6":
-            _do_sync_all()
+            _do_catalog_list(active_only=False)
         elif choice == "7":
+            _do_group_list()
+        elif choice == "8":
+            _do_balancers_menu()
+        elif choice == "9":
+            _do_sync_all()
+        elif choice == "10":
             _do_run_server()
         else:
             print_warning("Неизвестный пункт")
@@ -592,13 +627,57 @@ def settings_set(
 
 @settings_app.command("show")
 def settings_show() -> None:
-    _do_settings_show()
+    _do_panel_settings_show()
+
+
+@settings_app.command("script-show")
+def settings_script_show() -> None:
+    """Показать настройки скрипта (агент, transform, upstream, sync)."""
+    _do_script_settings_show()
 
 
 @settings_app.command("test")
 def settings_test() -> None:
     """Проверить подключение к Panel API."""
     _do_panel_test()
+
+
+@service_app.command("status")
+def service_status_cmd() -> None:
+    """Состояние systemd-службы и меню управления."""
+    run_service_status_menu()
+
+
+@service_app.command("install")
+def service_install_cmd() -> None:
+    """Установить unit-файл middlewarejson в systemd."""
+    run_install_systemd()
+
+
+@service_app.command("start")
+def service_start_cmd() -> None:
+    """Запустить службу middlewarejson."""
+    from app.services.systemd_service import start_service
+
+    ok, message = start_service()
+    if ok:
+        print_success(message)
+    else:
+        print_error(message)
+        raise typer.Exit(1)
+
+
+@service_app.command("restart")
+def service_restart_cmd() -> None:
+    """Перезапустить службу middlewarejson."""
+    from app.services.systemd_service import restart_service
+
+    ok, message = restart_service()
+    if ok:
+        print_success(message)
+    else:
+        print_error(message)
+        raise typer.Exit(1)
 
 
 @catalog_app.command("sync")

@@ -1,14 +1,19 @@
+# Пример unit-файла. Рекомендуется генерировать через CLI:
+#   python -m app.cli
+#   → Настройки → 5. Установить службу systemd
+#
+# CLI подставит: текущего пользователя, WorkingDirectory, пути к .venv и AGENT_HOST/PORT из .env.
+
 [Unit]
 Description=middlewarejson — 3x-ui JSON subscription proxy
 After=network.target
 
 [Service]
 Type=simple
-User=root
-WorkingDirectory=/opt/middlewarejson
-EnvironmentFile=/opt/middlewarejson/.env
-# AGENT_HOST / AGENT_PORT заданы в .env; порт должен совпадать с nginx proxy_pass
-ExecStart=/opt/middlewarejson/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8080
+User=YOUR_USER
+WorkingDirectory=/path/to/middlewarejson
+EnvironmentFile=/path/to/middlewarejson/.env
+ExecStart=/path/to/middlewarejson/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8080
 Restart=on-failure
 RestartSec=5
 
