@@ -47,6 +47,7 @@ class BalancerRule(BaseModel):
     tag: str
     remarks: str = ""
     strategy: Literal["roundRobin", "leastLoad", "leastPing", "random"] = "roundRobin"
+    hide_members: bool = True
     members: list[BalancerMember] = Field(default_factory=list)
 
 

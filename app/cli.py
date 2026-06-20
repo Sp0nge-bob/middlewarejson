@@ -41,7 +41,7 @@ from app.cli_balancer import (
     run_balancers_menu,
 )
 from app.cli_service import run_install_systemd, run_service_status_menu
-from app.models.balancer import format_scope, format_strategy
+from app.models.balancer import format_hide_members, format_scope, format_strategy
 from app.country_flags import apply_flag_prefix
 from app.services.profile_builder import default_balancer_tag
 
@@ -746,6 +746,11 @@ def balancer_create(
     strategy: str = typer.Option("roundRobin", "--strategy"),
     scope: str = typer.Option("disabled", "--scope", help="disabled|group|all|client"),
     scope_target: str = typer.Option("", "--scope-target", help="group name или sub_id"),
+    hide_members: bool = typer.Option(
+        True,
+        "--hide-members/--show-members",
+        help="Скрывать member-инбаунды как отдельные профили в подписке",
+    ),
 ) -> None:
     repo = _repo()
     raw_members = [part.strip() for part in members.split(",") if part.strip()]
@@ -763,10 +768,12 @@ def balancer_create(
         member_fingerprints=fingerprints,
         scope=scope,
         scope_target=scope_target,
+        hide_members=hide_members,
     )
     print_success(
         f"Балансировщик «{balancer_tag}» создан — "
-        f"{format_scope(scope, scope_target)}, {format_strategy(strategy)}"
+        f"{format_scope(scope, scope_target)}, {format_strategy(strategy)}, "
+        f"скрывает сервера: {format_hide_members(hide_members)}"
     )
 
 

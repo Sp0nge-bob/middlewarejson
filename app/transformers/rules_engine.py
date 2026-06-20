@@ -210,11 +210,15 @@ def _balancer_pool_nodes(
     return [node for node in nodes if node.tag in member_tags]
 
 
-def _node_in_any_balancer(node: ProxyNode, rules: TransformRules, nodes: list[ProxyNode]) -> bool:
-    return any(
-        node.tag in _resolve_balancer_members(balancer, nodes)
-        for balancer in rules.balancers
-    )
+def _node_hidden_as_standalone(
+    node: ProxyNode, rules: TransformRules, nodes: list[ProxyNode]
+) -> bool:
+    for balancer in rules.balancers:
+        if not balancer.hide_members:
+            continue
+        if node.tag in _resolve_balancer_members(balancer, nodes):
+            return True
+    return False
 
 
 def _build_grouped_output(
@@ -232,7 +236,6 @@ def _build_grouped_output(
             result.append(copy.deepcopy(config))
             continue
 
-        emitted_here = False
         for balancer in rules.balancers:
             if balancer.tag in emitted_balancers:
                 continue
@@ -244,9 +247,8 @@ def _build_grouped_output(
                 _build_balancer_config(template, pool_nodes, balancer, all_nodes=nodes)
             )
             emitted_balancers.add(balancer.tag)
-            emitted_here = True
 
-        if not emitted_here and not _node_in_any_balancer(node, rules, nodes):
+        if not _node_hidden_as_standalone(node, rules, nodes):
             result.append(copy.deepcopy(config))
 
     return result

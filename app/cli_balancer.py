@@ -34,6 +34,7 @@ from app.models.balancer import (
     BALANCER_SCOPES,
     BALANCER_STRATEGIES,
     STRATEGY_HINTS,
+    format_hide_members,
     format_scope,
     format_strategy,
     normalize_scope,
@@ -164,6 +165,13 @@ def prompt_strategy(default: str = "roundRobin") -> str:
         return normalize_strategy(choice)
     except ValueError:
         return default
+
+
+def prompt_hide_members(*, default: bool = True) -> bool:
+    console.print("[bold]Скрывать сервера в подписке?[/bold]")
+    print_info("Да — в HAPP только профиль балансировщика (серверы внутри него)")
+    print_info("Нет — балансировщик и каждый сервер отдельными строками")
+    return confirm_prompt("Скрывать добавленные сервера?", default=default)
 
 
 def prompt_scope(repo: CatalogRepository) -> tuple[str, str] | None:
@@ -318,6 +326,7 @@ def print_balancer_table(balancers: list, *, catalog_by_fp: dict | None = None) 
     table.add_column("Стратегия")
     table.add_column("Область применения")
     table.add_column("Инбаундов", justify="right")
+    table.add_column("Скрывает сервера")
 
     for index, balancer in enumerate(balancers):
         table.add_row(
@@ -327,6 +336,7 @@ def print_balancer_table(balancers: list, *, catalog_by_fp: dict | None = None) 
             format_strategy(balancer.strategy),
             format_scope(balancer.scope, balancer.scope_target),
             str(len(balancer.member_fingerprints)),
+            format_hide_members(balancer.hide_members),
         )
     console.print(table)
 
@@ -370,11 +380,16 @@ def configure_balancer_interactive(
             format_scope(balancer.scope, balancer.scope_target),
         )
         print_field("Состав инбаундов", f"{len(balancer.member_fingerprints)} шт.")
+        print_field(
+            "Скрывает сервера",
+            format_hide_members(balancer.hide_members),
+        )
         console.print()
         console.print("  1. Область применения")
         console.print("  2. Стратегия балансировки")
         console.print("  3. Название в HAPP")
         console.print("  4. Состав инбаундов")
+        console.print("  5. Скрывать сервера в подписке")
         console.print("  0. Назад")
 
         choice = text_prompt("Выбор", default="0").strip()
@@ -405,6 +420,12 @@ def configure_balancer_interactive(
                 continue
             repo.update_balancer(balancer.tag, member_fingerprints=fingerprints)
             print_success(f"Состав обновлён ({len(fingerprints)} инбаундов)")
+        elif choice == "5":
+            hide_members = prompt_hide_members(default=balancer.hide_members)
+            repo.update_balancer(balancer.tag, hide_members=hide_members)
+            print_success(
+                f"Скрывать сервера: {format_hide_members(hide_members)}"
+            )
         else:
             print_warning("Неизвестный пункт")
 
@@ -419,27 +440,30 @@ def create_balancer_interactive(
     list_inbounds,
     resolve_member_fingerprints,
 ) -> None:
-    print_step(1, 4, "Состав инбаундов")
+    print_step(1, 5, "Состав инбаундов")
     rows = list_inbounds(active_only=True, for_selection=True)
     fingerprints = _prompt_member_indices(rows)
     if not fingerprints:
         return
 
-    print_step(2, 4, "Название в HAPP")
+    print_step(2, 5, "Название в HAPP")
     name = prompt_happ_remarks(default="Balance")
     if name is None:
         return
     tag = default_balancer_tag(name)
     print_info(f"Идентификатор будет: {tag}")
 
-    print_step(3, 4, "Стратегия балансировки")
+    print_step(3, 5, "Стратегия балансировки")
     strategy = prompt_strategy()
 
-    print_step(4, 4, "Область применения")
+    print_step(4, 5, "Область применения")
     scope_result = prompt_scope(repo)
     if scope_result is None:
         return
     scope, scope_target = scope_result
+
+    print_step(5, 5, "Видимость серверов в подписке")
+    hide_members = prompt_hide_members(default=True)
 
     repo.create_balancer(
         tag=tag,
@@ -448,6 +472,7 @@ def create_balancer_interactive(
         member_fingerprints=fingerprints,
         scope=scope,
         scope_target=scope_target,
+        hide_members=hide_members,
     )
     print_success(
         f"Балансировщик «{tag}» создан — "

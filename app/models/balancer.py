@@ -43,6 +43,10 @@ def format_strategy(strategy: str) -> str:
     return STRATEGY_LABELS.get(strategy, strategy)  # type: ignore[arg-type]
 
 
+def format_hide_members(hide_members: bool) -> str:
+    return "да" if hide_members else "нет"
+
+
 def format_scope(scope: str, scope_target: str) -> str:
     label = BALANCER_SCOPES.get(scope, scope)  # type: ignore[arg-type]
     if scope in ("group", "client") and scope_target:

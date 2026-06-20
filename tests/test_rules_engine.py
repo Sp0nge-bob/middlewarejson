@@ -143,6 +143,36 @@ def test_least_ping_strategy_in_balancer_output() -> None:
     assert ping_config["routing"]["balancers"][0]["strategy"] == {"type": "leastPing"}
 
 
+def test_balancer_hide_members_false_keeps_standalone_profiles() -> None:
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    rules_data = copy.deepcopy(_base_rules())
+    rules_data["balancers"][0]["hide_members"] = False
+
+    transformer = RulesTransformer(TransformRules.from_dict(rules_data))
+    result = transformer.transform(payload)
+
+    remarks = [item["remarks"] for item in result]
+    assert "NL+USA Balance" in remarks
+    assert "NL-WS" in remarks
+    assert "US-WS" in remarks
+    assert "NL-XHTTP" in remarks
+
+
+def test_balancer_hide_members_true_hides_member_profiles() -> None:
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    rules_data = copy.deepcopy(_base_rules())
+    rules_data["balancers"][0]["hide_members"] = True
+
+    transformer = RulesTransformer(TransformRules.from_dict(rules_data))
+    result = transformer.transform(payload)
+
+    remarks = [item["remarks"] for item in result]
+    assert "NL+USA Balance" in remarks
+    assert "NL-WS" not in remarks
+    assert "US-WS" not in remarks
+    assert "NL-XHTTP" in remarks
+
+
 def test_balancer_members_can_use_remarks_match() -> None:
     payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
     rules_data = copy.deepcopy(_base_rules())

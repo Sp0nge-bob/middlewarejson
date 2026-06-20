@@ -107,6 +107,10 @@ class Database:
                 conn.execute(
                     "ALTER TABLE balancers ADD COLUMN scope_target TEXT NOT NULL DEFAULT ''"
                 )
+            if "hide_members" not in balancer_columns:
+                conn.execute(
+                    "ALTER TABLE balancers ADD COLUMN hide_members INTEGER NOT NULL DEFAULT 1"
+                )
 
             if "group_balancers" in tables:
                 rows = conn.execute(

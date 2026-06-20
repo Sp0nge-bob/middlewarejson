@@ -32,6 +32,7 @@ def build_balancer_rules(
                 tag=balancer.tag,
                 remarks=balancer.remarks or balancer.tag,
                 strategy=balancer.strategy,  # type: ignore[arg-type]
+                hide_members=balancer.hide_members,
                 members=[
                     BalancerMember(inbound_ids=balancer.member_fingerprints),
                 ],

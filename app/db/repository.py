@@ -15,6 +15,7 @@ class BalancerRecord:
     strategy: str
     scope: BalancerScope
     scope_target: str
+    hide_members: bool
     member_fingerprints: list[str]
 
 
@@ -162,6 +163,7 @@ class CatalogRepository:
         *,
         scope: str = "disabled",
         scope_target: str = "",
+        hide_members: bool = True,
     ) -> int:
         normalized_scope = normalize_scope(scope)
         normalized_strategy = normalize_strategy(strategy)
@@ -170,15 +172,16 @@ class CatalogRepository:
         with self._db.connect() as conn:
             cursor = conn.execute(
                 """
-                INSERT INTO balancers (tag, remarks, strategy, scope, scope_target)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO balancers (tag, remarks, strategy, scope, scope_target, hide_members)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(tag) DO UPDATE SET
                     remarks = excluded.remarks,
                     strategy = excluded.strategy,
                     scope = excluded.scope,
-                    scope_target = excluded.scope_target
+                    scope_target = excluded.scope_target,
+                    hide_members = excluded.hide_members
                 """,
-                (tag, remarks, normalized_strategy, normalized_scope, target),
+                (tag, remarks, normalized_strategy, normalized_scope, target, int(hide_members)),
             )
             balancer_id = cursor.lastrowid
             if balancer_id == 0:
@@ -211,6 +214,7 @@ class CatalogRepository:
         strategy: str | None = None,
         scope: str | None = None,
         scope_target: str | None = None,
+        hide_members: bool | None = None,
         member_fingerprints: list[str] | None = None,
     ) -> bool:
         balancer = self.get_balancer_by_tag(tag)
@@ -229,15 +233,25 @@ class CatalogRepository:
         )
         if new_scope in ("disabled", "all"):
             new_target = ""
+        new_hide_members = (
+            hide_members if hide_members is not None else balancer.hide_members
+        )
 
         with self._db.connect() as conn:
             conn.execute(
                 """
                 UPDATE balancers
-                SET remarks = ?, strategy = ?, scope = ?, scope_target = ?
+                SET remarks = ?, strategy = ?, scope = ?, scope_target = ?, hide_members = ?
                 WHERE tag = ?
                 """,
-                (new_remarks, new_strategy, new_scope, new_target, tag),
+                (
+                    new_remarks,
+                    new_strategy,
+                    new_scope,
+                    new_target,
+                    int(new_hide_members),
+                    tag,
+                ),
             )
 
             if member_fingerprints is not None:
@@ -282,7 +296,7 @@ class CatalogRepository:
         with self._db.connect() as conn:
             rows = conn.execute(
                 """
-                SELECT id, tag, remarks, strategy, scope, scope_target
+                SELECT id, tag, remarks, strategy, scope, scope_target, hide_members
                 FROM balancers
                 ORDER BY tag
                 """
@@ -307,6 +321,7 @@ class CatalogRepository:
                         strategy=str(row["strategy"]),
                         scope=normalize_scope(str(row["scope"])),
                         scope_target=str(row["scope_target"]),
+                        hide_members=bool(row["hide_members"]),
                         member_fingerprints=[
                             str(member["inbound_fingerprint"]) for member in members
                         ],

@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS balancers (
     remarks TEXT NOT NULL DEFAULT '',
     strategy TEXT NOT NULL DEFAULT 'roundRobin',
     scope TEXT NOT NULL DEFAULT 'disabled',
-    scope_target TEXT NOT NULL DEFAULT ''
+    scope_target TEXT NOT NULL DEFAULT '',
+    hide_members INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS balancer_members (
