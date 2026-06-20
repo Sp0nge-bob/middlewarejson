@@ -60,6 +60,18 @@ class Settings(BaseSettings):
         default=None,
         validation_alias="PANEL_VERIFY_SSL",
     )
+    panel_sync_on_startup: bool = Field(
+        default=True,
+        validation_alias="PANEL_SYNC_ON_STARTUP",
+    )
+    panel_sync_at: str = Field(
+        default="04:00",
+        validation_alias="PANEL_SYNC_AT",
+    )
+    panel_sync_timezone: str = Field(
+        default="",
+        validation_alias="PANEL_SYNC_TZ",
+    )
 
     def resolved_panel_base_url(self) -> str:
         return (self.panel_api_base_url or self.upstream_base_url).rstrip("/")
