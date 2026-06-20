@@ -50,3 +50,11 @@ def build_balancer_rules(
 
 def default_balancer_tag(name: str) -> str:
     return _slugify_tag(name)
+
+
+def suggest_balancer_tag(existing_tags: set[str] | None = None) -> str:
+    taken = existing_tags or set()
+    n = 1
+    while f"tag-{n}" in taken:
+        n += 1
+    return f"tag-{n}"

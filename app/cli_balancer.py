@@ -40,7 +40,7 @@ from app.models.balancer import (
     normalize_scope,
     normalize_strategy,
 )
-from app.services.profile_builder import default_balancer_tag
+from app.services.profile_builder import suggest_balancer_tag
 
 SCOPE_CHOICES = list(BALANCER_SCOPES.keys())
 MAX_CLIENT_RESULTS = 20
@@ -167,13 +167,11 @@ def prompt_strategy(default: str = "roundRobin") -> str:
         return default
 
 
-def prompt_balancer_tag(
-    repo: CatalogRepository,
-    remarks: str,
-) -> str | None:
-    default_tag = default_balancer_tag(strip_leading_flag(remarks))
+def prompt_balancer_tag(repo: CatalogRepository) -> str | None:
+    taken = {balancer.tag for balancer in repo.list_balancers()}
+    suggested = suggest_balancer_tag(taken)
     while True:
-        raw = text_prompt("Идентификатор", default=default_tag).strip()
+        raw = text_prompt("Идентификатор", default=suggested).strip()
         if is_exit_choice(raw):
             print_cancelled()
             return None
@@ -471,7 +469,7 @@ def create_balancer_interactive(
         return
 
     print_step(3, 6, "Идентификатор")
-    tag = prompt_balancer_tag(repo, name)
+    tag = prompt_balancer_tag(repo)
     if tag is None:
         return
 

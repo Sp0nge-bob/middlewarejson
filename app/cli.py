@@ -43,7 +43,7 @@ from app.cli_balancer import (
 from app.cli_service import run_install_systemd, run_service_status_menu
 from app.models.balancer import format_hide_members, format_scope, format_strategy
 from app.country_flags import apply_flag_prefix
-from app.services.profile_builder import default_balancer_tag
+from app.services.profile_builder import suggest_balancer_tag
 
 app = typer.Typer(
     help="middlewarejson CLI — каталог инбаундов, балансировщики по группам клиентов",
@@ -760,7 +760,8 @@ def balancer_create(
         raise typer.Exit(1)
 
     remarks = apply_flag_prefix(name, flag or None)
-    balancer_tag = tag.strip() if tag else default_balancer_tag(name)
+    taken = {balancer.tag for balancer in repo.list_balancers()}
+    balancer_tag = tag.strip() if tag else suggest_balancer_tag(taken)
     if repo.get_balancer_by_tag(balancer_tag) is not None:
         console.print(f"[red]Идентификатор «{balancer_tag}» уже занят[/red]")
         raise typer.Exit(1)

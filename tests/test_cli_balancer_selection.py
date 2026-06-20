@@ -4,7 +4,7 @@ from app.cli_balancer import (
     filter_clients,
     prompt_happ_remarks,
 )
-from app.services.profile_builder import default_balancer_tag
+from app.services.profile_builder import default_balancer_tag, suggest_balancer_tag
 from app.db.repository import ClientRecord
 
 
@@ -14,6 +14,12 @@ def _client(email: str, *, sub_id: str = "sub1", group: str = "G1") -> ClientRec
 
 def test_default_balancer_tag_from_cyrillic_name() -> None:
     assert default_balancer_tag("Авто-подбор") == "авто-подбор"
+
+
+def test_suggest_balancer_tag_skips_existing() -> None:
+    assert suggest_balancer_tag() == "tag-1"
+    assert suggest_balancer_tag({"tag-1"}) == "tag-2"
+    assert suggest_balancer_tag({"tag-1", "tag-2"}) == "tag-3"
 
 
 def test_prompt_member_indices_exit_cancels(monkeypatch) -> None:
