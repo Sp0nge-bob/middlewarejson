@@ -3,6 +3,14 @@ from __future__ import annotations
 import typer
 from rich.table import Table
 
+from app.country_flags import (
+    COMMON_COUNTRY_FLAGS,
+    apply_flag_prefix,
+    country_code_to_flag,
+    extract_country_code,
+    resolve_flag_choice,
+    strip_leading_flag,
+)
 from app.cli_ui import (
     CANCEL_HINT,
     confirm_prompt,
@@ -206,6 +214,56 @@ def prompt_scope(repo: CatalogRepository) -> tuple[str, str] | None:
     return scope, ""
 
 
+def prompt_happ_remarks(*, default: str = "Balance", current: str | None = None) -> str | None:
+    default_name = strip_leading_flag(current or default)
+    default_flag_code = extract_country_code(current) if current else None
+
+    console.print("[bold]Название в HAPP[/bold]")
+    print_info("Флаг в начале названия отображается в HAPP как иконка профиля")
+    console.print("  0. Без флага")
+    for index, (code, label) in enumerate(COMMON_COUNTRY_FLAGS, start=1):
+        flag = country_code_to_flag(code) or ""
+        mark = " [dim](текущий)[/dim]" if code == default_flag_code else ""
+        console.print(f"  {index}. {flag} {code} — {label}{mark}")
+
+    flag_default = "0"
+    if default_flag_code:
+        for index, (code, _) in enumerate(COMMON_COUNTRY_FLAGS, start=1):
+            if code == default_flag_code:
+                flag_default = str(index)
+                break
+        else:
+            flag_default = default_flag_code.lower()
+
+    while True:
+        flag_choice = typer.prompt(
+            f"Флаг (номер, код nl/us или 0 — без), {CANCEL_HINT}",
+            default=flag_default,
+        ).strip()
+        if is_exit_choice(flag_choice):
+            print_cancelled()
+            return None
+
+        resolved = resolve_flag_choice(flag_choice)
+        if resolved is None:
+            print_warning("Неверный выбор флага")
+            continue
+        country_code = None if resolved is True else resolved
+        break
+
+    name = typer.prompt("Название", default=default_name).strip()
+    if is_exit_choice(name):
+        print_cancelled()
+        return None
+    if not name:
+        print_warning("Название не может быть пустым")
+        return None
+
+    remarks = apply_flag_prefix(name, country_code)
+    print_info(f"В HAPP: {remarks}")
+    return remarks
+
+
 def _prompt_member_indices(rows: list) -> list[str] | None:
     if not rows:
         print_warning("Каталог инбаундов пуст. Сначала выполните синхронизацию.")
@@ -308,7 +366,9 @@ def configure_balancer_interactive(
             repo.update_balancer(balancer.tag, strategy=strategy)
             print_success(f"Стратегия: {format_strategy(strategy)}")
         elif choice == "3":
-            remarks = typer.prompt("Название в HAPP", default=balancer.remarks).strip()
+            remarks = prompt_happ_remarks(current=balancer.remarks)
+            if remarks is None:
+                continue
             repo.update_balancer(balancer.tag, remarks=remarks)
             print_success(f"Название: {remarks}")
         elif choice == "4":
@@ -339,7 +399,9 @@ def create_balancer_interactive(
         return
 
     print_step(2, 4, "Название в HAPP")
-    name = typer.prompt("Название", default="Balance").strip()
+    name = prompt_happ_remarks(default="Balance")
+    if name is None:
+        return
     tag = default_balancer_tag(name)
     print_info(f"Идентификатор будет: {tag}")
 

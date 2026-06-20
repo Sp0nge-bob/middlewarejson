@@ -38,6 +38,7 @@ from app.cli_balancer import (
     run_balancers_menu,
 )
 from app.models.balancer import format_scope, format_strategy
+from app.country_flags import apply_flag_prefix
 from app.services.profile_builder import default_balancer_tag
 
 app = typer.Typer(
@@ -498,6 +499,21 @@ def _do_sync_all() -> None:
     )
 
 
+def _do_run_server() -> None:
+    host = settings.agent_host
+    port = settings.agent_port
+    print_info(f"Запуск на http://{host}:{port} — Ctrl+C для остановки")
+    try:
+        import uvicorn
+
+        uvicorn.run("app.main:app", host=host, port=port, log_level="info")
+    except KeyboardInterrupt:
+        console.print()
+        print_info("Сервер остановлен")
+    except OSError as exc:
+        print_error(f"Не удалось запустить сервер: {exc}")
+
+
 def _print_interactive_menu() -> None:
     print_section("Настройки")
     print_menu_item(1, "Показать настройки панели")
@@ -512,6 +528,9 @@ def _print_interactive_menu() -> None:
 
     print_section("Синхронизация")
     print_menu_item(6, "Синхронизация")
+
+    print_section("Сервер")
+    print_menu_item(7, f"Запустить агент (uvicorn :{settings.agent_port})")
 
     console.print()
     print_menu_item(0, "Выход")
@@ -544,6 +563,8 @@ def run_interactive_menu() -> None:
             _do_balancers_menu()
         elif choice == "6":
             _do_sync_all()
+        elif choice == "7":
+            _do_run_server()
         else:
             print_warning("Неизвестный пункт")
 
@@ -629,6 +650,11 @@ def group_show_cmd(
 @balancer_app.command("create")
 def balancer_create(
     name: str = typer.Option(..., "--name", help="Отображаемое имя профиля в HAPP"),
+    flag: str = typer.Option(
+        "",
+        "--flag",
+        help="Код страны для иконки в HAPP (nl, us, de…)",
+    ),
     members: str = typer.Option(
         ...,
         "--members",
@@ -646,10 +672,11 @@ def balancer_create(
         console.print("[red]--members must resolve to at least one fingerprint[/red]")
         raise typer.Exit(1)
 
-    balancer_tag = tag or default_balancer_tag(name)
+    remarks = apply_flag_prefix(name, flag or None)
+    balancer_tag = tag or default_balancer_tag(remarks)
     repo.create_balancer(
         tag=balancer_tag,
-        remarks=name,
+        remarks=remarks,
         strategy=strategy,
         member_fingerprints=fingerprints,
         scope=scope,

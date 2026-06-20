@@ -1,4 +1,9 @@
-from app.cli_balancer import _prompt_client_sub_id, _prompt_member_indices, filter_clients
+from app.cli_balancer import (
+    _prompt_client_sub_id,
+    _prompt_member_indices,
+    filter_clients,
+    prompt_happ_remarks,
+)
 from app.db.repository import ClientRecord
 
 
@@ -52,6 +57,20 @@ def test_prompt_client_sub_id_exact_sub_id(monkeypatch) -> None:
     monkeypatch.setattr("app.cli_balancer.confirm_prompt", lambda *_a, **_k: True)
     clients = [_client("Andrey_NL", sub_id="uzhp1975wixbxwj1")]
     assert _prompt_client_sub_id(clients) == "uzhp1975wixbxwj1"
+
+
+def test_prompt_happ_remarks_with_flag(monkeypatch) -> None:
+    prompts = iter(["1", "NL Pool"])
+    monkeypatch.setattr(
+        "app.cli_balancer.typer.prompt",
+        lambda *_a, **_k: next(prompts),
+    )
+    assert prompt_happ_remarks(default="Balance") == "🇳🇱 NL Pool"
+
+
+def test_prompt_happ_remarks_exit(monkeypatch) -> None:
+    monkeypatch.setattr("app.cli_balancer.typer.prompt", lambda *_a, **_k: "exit")
+    assert prompt_happ_remarks() is None
 
 
 def test_prompt_client_sub_id_search_then_pick(monkeypatch) -> None:
