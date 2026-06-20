@@ -28,8 +28,7 @@ from app.services.panel_api import (
 )
 from app.cli_balancer import (
     configure_balancer_interactive,
-    create_balancer_interactive,
-    list_balancers_interactive,
+    run_balancers_menu,
 )
 from app.models.balancer import format_scope, format_strategy
 from app.services.profile_builder import default_balancer_tag
@@ -257,7 +256,7 @@ def _do_group_list() -> None:
     groups = repo.list_groups()
 
     if not groups:
-        print_warning("Групп нет. Выполните синхронизацию (п. 8 в меню).")
+        print_warning("Групп нет. Выполните синхронизацию (п. 6 в меню).")
         return
 
     table = Table(title="Группы клиентов")
@@ -309,23 +308,12 @@ def _do_group_show(group_name: str) -> None:
         console.print(f"  {client.email or '(no email)'}  sub_id={client.sub_id}  [{status}]")
 
 
-def _do_balancer_create_interactive() -> None:
-    create_balancer_interactive(
+def _do_balancers_menu() -> None:
+    run_balancers_menu(
         _repo(),
         list_inbounds=_do_catalog_list,
         resolve_member_fingerprints=_resolve_member_fingerprints,
     )
-
-
-def _do_balancer_list(*, interactive: bool = False) -> None:
-    if interactive:
-        list_balancers_interactive(
-            _repo(),
-            list_inbounds=_do_catalog_list,
-            resolve_member_fingerprints=_resolve_member_fingerprints,
-        )
-    else:
-        _print_balancer_list_only()
 
 
 def _print_balancer_list_only() -> None:
@@ -337,14 +325,6 @@ def _print_balancer_list_only() -> None:
         console.print("[yellow]Балансировщиков нет[/yellow]")
         return
     print_balancer_table(balancers)
-
-
-def _do_balancer_delete_interactive() -> None:
-    tag = typer.prompt("Идентификатор балансировщика")
-    if _repo().delete_balancer(tag.strip()):
-        print_success(f"Удалён балансировщик «{tag.strip()}»")
-    else:
-        print_error(f"Балансировщик «{tag.strip()}» не найден")
 
 
 def _do_sync_all() -> None:
@@ -393,12 +373,10 @@ def _print_interactive_menu() -> None:
     print_menu_item(4, "Список групп")
 
     print_section("Балансировщики")
-    print_menu_item(5, "Создать балансировщик")
-    print_menu_item(6, "Список и настройка балансировщиков")
-    print_menu_item(7, "Удалить балансировщик")
+    print_menu_item(5, "Балансировщики")
 
     print_section("Синхронизация")
-    print_menu_item(8, "Синхронизация")
+    print_menu_item(6, "Синхронизация")
 
     console.print()
     print_menu_item(0, "Выход")
@@ -438,12 +416,8 @@ def run_interactive_menu() -> None:
         elif choice == "4":
             _do_group_list()
         elif choice == "5":
-            _do_balancer_create_interactive()
+            _do_balancers_menu()
         elif choice == "6":
-            _do_balancer_list(interactive=True)
-        elif choice == "7":
-            _do_balancer_delete_interactive()
-        elif choice == "8":
             _do_sync_all()
         else:
             print_warning("Неизвестный пункт")

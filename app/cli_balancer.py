@@ -4,10 +4,13 @@ import typer
 from rich.table import Table
 
 from app.cli_ui import (
+    confirm_prompt,
     console,
     print_error,
     print_field,
     print_info,
+    print_menu_item,
+    print_section,
     print_step,
     print_success,
     print_warning,
@@ -64,7 +67,7 @@ def prompt_scope(repo: CatalogRepository) -> tuple[str, str]:
     if scope == "group":
         groups = repo.list_groups()
         if not groups:
-            print_warning("Групп нет. Сначала выполните синхронизацию (п. 8 в меню).")
+            print_warning("Групп нет. Сначала выполните синхронизацию (п. 6 в меню).")
             return "disabled", ""
         console.print("[bold]Выберите группу[/bold]")
         for index, group_name in enumerate(groups):
@@ -78,7 +81,7 @@ def prompt_scope(repo: CatalogRepository) -> tuple[str, str]:
     if scope == "client":
         clients = repo.list_all_clients()
         if not clients:
-            print_warning("Клиентов нет. Сначала выполните синхронизацию (п. 8 в меню).")
+            print_warning("Клиентов нет. Сначала выполните синхронизацию (п. 6 в меню).")
             return "disabled", ""
         console.print("[bold]Выберите клиента[/bold]")
         for index, client in enumerate(clients):
@@ -244,41 +247,95 @@ def create_balancer_interactive(
     )
 
 
-def list_balancers_interactive(
+def _resolve_balancer_tag(
+    repo: CatalogRepository,
+    balancers: list,
+    choice: str,
+) -> str | None:
+    value = choice.strip()
+    if not value:
+        return None
+
+    try:
+        return balancers[int(value)].tag
+    except (ValueError, IndexError):
+        if repo.get_balancer_by_tag(value) is not None:
+            return value
+        print_error(f"Балансировщик «{value}» не найден")
+        return None
+
+
+def delete_balancer_interactive(repo: CatalogRepository, balancers: list) -> None:
+    if not balancers:
+        print_warning("Балансировщиков нет")
+        return
+
+    choice = typer.prompt(
+        "Номер или идентификатор для удаления (Enter — отмена)",
+        default="",
+    ).strip()
+    tag = _resolve_balancer_tag(repo, balancers, choice)
+    if tag is None:
+        return
+
+    if not confirm_prompt(f"Удалить балансировщик «{tag}»?", default=False):
+        return
+
+    if repo.delete_balancer(tag):
+        print_success(f"Удалён балансировщик «{tag}»")
+    else:
+        print_error(f"Балансировщик «{tag}» не найден")
+
+
+def run_balancers_menu(
     repo: CatalogRepository,
     *,
     list_inbounds,
     resolve_member_fingerprints,
 ) -> None:
-    balancers = repo.list_balancers()
-    if not balancers:
-        print_warning("Балансировщиков нет")
-        return
+    while True:
+        console.print()
+        print_section("Балансировщики")
+        balancers = repo.list_balancers()
+        if balancers:
+            print_balancer_table(balancers)
+        else:
+            print_warning("Балансировщиков нет")
 
-    catalog_by_fp = {
-        str(row["fingerprint"]): row for row in repo.list_inbounds(active_only=False)
-    }
-    print_balancer_table(balancers, catalog_by_fp=catalog_by_fp)
+        console.print()
+        print_menu_item(1, "Создать")
+        print_menu_item(2, "Настроить")
+        print_menu_item(3, "Удалить")
+        print_menu_item(0, "Назад")
 
-    choice = typer.prompt(
-        "Номер балансировщика для настройки (Enter — пропустить)",
-        default="",
-    ).strip()
-    if not choice:
-        return
+        choice = typer.prompt("Выбор", default="0").strip()
+        if choice == "0":
+            return
 
-    try:
-        index = int(choice)
-        configure_balancer_interactive(
-            repo,
-            balancers[index].tag,
-            list_inbounds=list_inbounds,
-            resolve_member_fingerprints=resolve_member_fingerprints,
-        )
-    except (ValueError, IndexError):
-        configure_balancer_interactive(
-            repo,
-            choice,
-            list_inbounds=list_inbounds,
-            resolve_member_fingerprints=resolve_member_fingerprints,
-        )
+        if choice == "1":
+            create_balancer_interactive(
+                repo,
+                list_inbounds=list_inbounds,
+                resolve_member_fingerprints=resolve_member_fingerprints,
+            )
+        elif choice == "2":
+            if not balancers:
+                print_warning("Сначала создайте балансировщик")
+                continue
+            pick = typer.prompt(
+                "Номер или идентификатор (Enter — отмена)",
+                default="",
+            ).strip()
+            tag = _resolve_balancer_tag(repo, balancers, pick)
+            if tag is None:
+                continue
+            configure_balancer_interactive(
+                repo,
+                tag,
+                list_inbounds=list_inbounds,
+                resolve_member_fingerprints=resolve_member_fingerprints,
+            )
+        elif choice == "3":
+            delete_balancer_interactive(repo, balancers)
+        else:
+            print_warning("Неизвестный пункт")
