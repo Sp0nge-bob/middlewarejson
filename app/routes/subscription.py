@@ -67,15 +67,12 @@ def build_subscription_router(json_path: str) -> APIRouter:
             logger.warning("invalid upstream json for sub_id=%s: %s", sub_id, exc)
             return PlainTextResponse(status_code=502, content="invalid upstream json")
 
-        # 3x-ui отдаёт text/plain — мобильный HAPP на это рассчитан; application/json ломает импорт.
-        content_type = result.headers.get("Content-Type", "text/plain; charset=utf-8")
-
         return PlainTextResponse(
             status_code=200,
             content=body,
             headers={
                 **result.headers,
-                "Content-Type": content_type,
+                "Content-Type": "application/json; charset=utf-8",
                 "Cache-Control": "no-store",
             },
         )

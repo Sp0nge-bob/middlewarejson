@@ -58,7 +58,6 @@ def test_passthrough_json_and_headers(client: TestClient) -> None:
             status_code=200,
             text=SAMPLE_BODY,
             headers={
-                "Content-Type": "text/plain; charset=utf-8",
                 "Subscription-Userinfo": "upload=0; download=0; total=0; expire=0",
                 "Profile-Update-Interval": "10",
             },
@@ -77,5 +76,5 @@ def test_passthrough_json_and_headers(client: TestClient) -> None:
         "upload=0; download=0; total=0; expire=0"
     )
     assert response.headers["profile-update-interval"] == "10"
-    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.headers["content-type"].startswith("application/json")
     assert json.loads(response.text) == json.loads(SAMPLE_BODY)
