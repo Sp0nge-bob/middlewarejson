@@ -15,6 +15,8 @@ _STRATEGY_MAP = {
     "random": "random",
 }
 
+_FAILED_SUFFIX = " - Failed"
+
 
 def _as_config_list(payload: SubscriptionPayload) -> list[dict[str, Any]]:
     if isinstance(payload, list):
@@ -110,6 +112,36 @@ def _resolve_balancer_members(balancer: BalancerRule, nodes: list[ProxyNode]) ->
     return tags
 
 
+def _expected_balancer_fingerprints(balancer: BalancerRule) -> list[str]:
+    fingerprints: list[str] = []
+    seen: set[str] = set()
+    for member in balancer.members:
+        for inbound_id in member.inbound_ids:
+            if inbound_id not in seen:
+                seen.add(inbound_id)
+                fingerprints.append(inbound_id)
+    return fingerprints
+
+
+def _balancer_members_incomplete(balancer: BalancerRule, nodes: list[ProxyNode]) -> bool:
+    expected = _expected_balancer_fingerprints(balancer)
+    if not expected:
+        return False
+
+    nodes_by_fingerprint = {
+        node.fingerprint: node for node in nodes if node.fingerprint
+    }
+    return any(fingerprint not in nodes_by_fingerprint for fingerprint in expected)
+
+
+def _balancer_display_remarks(balancer: BalancerRule, all_nodes: list[ProxyNode]) -> str:
+    remarks = balancer.remarks or balancer.tag
+    if _balancer_members_incomplete(balancer, all_nodes):
+        if not remarks.endswith(_FAILED_SUFFIX):
+            remarks = f"{remarks}{_FAILED_SUFFIX}"
+    return remarks
+
+
 def _node_balancer_map(
     rules: TransformRules, nodes: list[ProxyNode]
 ) -> dict[str, BalancerRule]:
@@ -139,11 +171,13 @@ def _build_balancer_config(
     template_config: dict[str, Any],
     nodes: list[ProxyNode],
     balancer: BalancerRule,
+    *,
+    all_nodes: list[ProxyNode] | None = None,
 ) -> dict[str, Any]:
     config = copy.deepcopy(template_config)
     proxy_outbounds = [copy.deepcopy(node.outbound) for node in nodes]
     config["outbounds"] = proxy_outbounds + _system_outbounds(template_config)
-    config["remarks"] = balancer.remarks or balancer.tag
+    config["remarks"] = _balancer_display_remarks(balancer, all_nodes or nodes)
 
     routing: dict[str, Any] = {}
     selector = [node.tag for node in nodes]
@@ -206,7 +240,9 @@ def _build_grouped_output(
             if not pool_nodes or node.tag not in {item.tag for item in pool_nodes}:
                 continue
             template = configs[pool_nodes[0].source_index]
-            result.append(_build_balancer_config(template, pool_nodes, balancer))
+            result.append(
+                _build_balancer_config(template, pool_nodes, balancer, all_nodes=nodes)
+            )
             emitted_balancers.add(balancer.tag)
             emitted_here = True
 

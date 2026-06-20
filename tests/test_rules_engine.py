@@ -68,6 +68,43 @@ def test_balancer_members_can_use_inbound_ids() -> None:
     assert set(ws_config["routing"]["balancers"][0]["selector"]) == {nl_fp, us_fp}
 
 
+def test_balancer_incomplete_members_adds_failed_suffix() -> None:
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    rules_data = yaml.safe_load(RULES.read_text(encoding="utf-8"))
+    rules_data["tagging"]["rules"] = []
+    rules_data["balancers"] = [
+        {
+            "tag": "mixed-pool",
+            "remarks": "TESTBALANCE",
+            "strategy": "roundRobin",
+            "members": [
+                {
+                    "inbound_ids": [
+                        "vless|node1.example.com|ws||443||",
+                        "vless|missing.example.com|ws||443||",
+                    ]
+                }
+            ],
+        }
+    ]
+    rules_data["output"]["format"] = "grouped"
+
+    from app.models.nodes import configs_to_nodes
+
+    nodes = configs_to_nodes(payload)
+    rules_data["balancers"][0]["members"][0]["inbound_ids"] = [
+        nodes[0].fingerprint,
+        "vless|missing.example.com|ws||443||",
+    ]
+
+    transformer = RulesTransformer(TransformRules.from_dict(rules_data))
+    result = transformer.transform(payload)
+    failed_config = next(
+        item for item in result if item["remarks"] == "TESTBALANCE - Failed"
+    )
+    assert len(failed_config["routing"]["balancers"][0]["selector"]) == 1
+
+
 def test_least_ping_strategy_in_balancer_output() -> None:
     payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
     rules_data = yaml.safe_load(RULES.read_text(encoding="utf-8"))
