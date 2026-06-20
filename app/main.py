@@ -31,6 +31,15 @@ def _log_transform_readiness() -> None:
     upstream_path = settings.upstream_json_path.rstrip("/")
     logger.info("TRANSFORM_MODE=%s, balancers in db=%s", settings.transform_mode, balancer_count)
     logger.info("upstream target: %s%s/<sub_id>", upstream_base, upstream_path)
+
+    web_path = settings.panel_web_base_path.strip().strip("/")
+    if web_path and web_path in upstream_base:
+        logger.warning(
+            "UPSTREAM_BASE_URL похож на URL панели (содержит %s). "
+            "JSON-подписки отдаёт отдельный sub-сервер 3x-ui — другой порт, "
+            "без web base path. Возьмите JSON URL из карточки клиента в панели.",
+            web_path,
+        )
     if balancer_count and mode != "rules":
         logger.warning(
             "Балансировщики в базе есть, но TRANSFORM_MODE=%s — "
