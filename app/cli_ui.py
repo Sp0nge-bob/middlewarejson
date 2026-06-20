@@ -35,8 +35,8 @@ def _decode_stdin_line() -> str:
 
 def confirm_prompt(message: str, *, default: bool = False) -> bool:
     """Подтверждение без typer.confirm — совместимо с не-UTF-8 терминалами."""
-    hint = "Y/n" if default else "y/N"
-    console.print(f"{message} [{hint}]: ", end="")
+    hint = "(Y/n)" if default else "(y/N)"
+    console.print(f"{message} {hint}: ", end="")
     sys.stdout.flush()
 
     try:

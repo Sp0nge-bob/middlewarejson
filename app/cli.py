@@ -1,4 +1,5 @@
 import typer
+from rich import box
 from rich.table import Table
 
 from app.cli_ui import (
@@ -92,30 +93,56 @@ def _resolve_member_fingerprints(
     return unique
 
 
+def _format_endpoint(row: dict[str, object]) -> str:
+    address = str(row.get("address") or "").strip()
+    port = int(row.get("port") or 0)
+    if address and port:
+        return f"{address}:{port}"
+    if address:
+        return address
+    if port:
+        return f"порт {port}"
+    return "—"
+
+
 def _print_inbound_table(rows: list[dict[str, object]]) -> None:
-    table = Table(title="Каталог инбаундов")
-    table.add_column("#", style="dim")
-    table.add_column("ID", style="cyan")
-    table.add_column("Активен", style="green")
-    table.add_column("Название")
-    table.add_column("Протокол")
-    table.add_column("Адрес:Порт")
-    table.add_column("Отпечаток")
+    active_count = sum(1 for row in rows if row["is_active"])
+    table = Table(
+        title="Каталог инбаундов",
+        box=box.SIMPLE_HEAD,
+        show_footer=True,
+        footer_style="dim",
+    )
+    table.add_column("#", style="dim", width=3, justify="right")
+    table.add_column("ID", style="cyan", width=4, justify="right")
+    table.add_column("Статус", width=6)
+    table.add_column("Название", min_width=14, max_width=22, overflow="ellipsis", no_wrap=True)
+    table.add_column("Прот.", width=8, overflow="ellipsis", no_wrap=True)
+    table.add_column("Эндпоинт", min_width=18, max_width=30, overflow="ellipsis", no_wrap=True)
+    table.add_column("Сеть", width=8, overflow="ellipsis", no_wrap=True)
 
     for index, row in enumerate(rows):
-        fingerprint = str(row["fingerprint"])
-        short_fp = fingerprint if len(fingerprint) <= 32 else fingerprint[:29] + "..."
         panel_id = row.get("panel_inbound_id")
-        address_port = f"{row['address']}:{row['port']}"
+        network = str(row.get("network") or "—")
+        is_active = bool(row["is_active"])
+        status = "[green]вкл[/green]" if is_active else "[dim]выкл[/dim]"
         table.add_row(
             str(index),
-            str(panel_id) if panel_id is not None else "-",
-            "да" if row["is_active"] else "нет",
+            str(panel_id) if panel_id is not None else "—",
+            status,
             str(row["remarks"]),
             str(row["protocol"]),
-            address_port,
-            short_fp,
+            _format_endpoint(row),
+            network,
         )
+
+    table.columns[0].footer = ""
+    table.columns[1].footer = ""
+    table.columns[2].footer = ""
+    table.columns[3].footer = f"всего {len(rows)}"
+    table.columns[4].footer = ""
+    table.columns[5].footer = f"активных {active_count}"
+    table.columns[6].footer = ""
     console.print(table)
 
 
@@ -124,17 +151,18 @@ def _do_settings_show() -> None:
     token = resolve_panel_token(settings, repo.get_setting(PANEL_API_TOKEN_KEY))
     balancers = repo.list_balancers()
     assignments = repo.list_group_assignments()
-
-    console.print(f"DB_PATH: {settings.db_path}")
-    console.print(f"PANEL_API_BASE_URL: {settings.resolved_panel_base_url()}")
     web_path = resolve_panel_web_base_path(
         settings,
         repo.get_setting(PANEL_WEB_BASE_PATH_KEY),
     )
-    console.print(f"PANEL_WEB_BASE_PATH: {web_path or '(empty)'}")
-    console.print(f"PANEL_API_TOKEN: {_mask_token(token)}")
-    console.print(f"balancers: {len(balancers)}")
-    console.print(f"group assignments: {len(assignments)}")
+
+    console.print()
+    print_field("База данных", settings.db_path)
+    print_field("URL панели", settings.resolved_panel_base_url())
+    print_field("Web base path", web_path or "—")
+    print_field("API token", _mask_token(token))
+    print_field("Балансировщиков", str(len(balancers)))
+    print_field("Привязок к группам", str(len(assignments)))
 
 
 def _prompt_panel_settings(repo: CatalogRepository) -> bool:
@@ -369,7 +397,7 @@ def _print_interactive_menu() -> None:
     print_menu_item(3, "Список инбаундов")
     print_menu_item(4, "Список групп")
 
-    print_section("Балансировщики")
+    print_section("Настройка JSON")
     print_menu_item(5, "Балансировщики")
 
     print_section("Синхронизация")
