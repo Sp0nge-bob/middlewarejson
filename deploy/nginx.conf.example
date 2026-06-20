@@ -1,9 +1,10 @@
 # Fragment for your existing server { listen 443 ssl; ... } block.
 # Route JSON subscriptions through the middleware agent, not 3x-ui directly.
 #
+# Replace <AGENT_JSON_PATH> with UPSTREAM_JSON_PATH from .env (e.g. /json).
 # Set proxy_pass port to match AGENT_PORT in .env (default 8080).
 
-location /json/ {
+location <AGENT_JSON_PATH>/ {
     proxy_pass http://127.0.0.1:8080;
     proxy_http_version 1.1;
     proxy_set_header Host $host;

@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from app.config import settings
 from app.db.database import Database
 from app.db.repository import CatalogRepository
-from app.routes.subscription import router
+from app.routes.subscription import build_subscription_router
 from app.services.factory import build_transform_service
 from app.services.panel_api import PANEL_API_BASE_URL_KEY, resolve_upstream_base_url
 from app.services.panel_sync import panel_sync_scheduler, run_panel_sync_async
@@ -72,4 +72,4 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="middlewarejson", version="0.2.0", lifespan=lifespan)
 app.state.settings = settings
 app.state.transform_service = build_transform_service(settings)
-app.include_router(router)
+app.include_router(build_subscription_router(settings.resolved_agent_json_path()))

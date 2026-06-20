@@ -12,70 +12,73 @@ from app.services.upstream import UpstreamClient, UpstreamError
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
-
 
 def _serialize_payload(payload: SubscriptionPayload) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
 
 
-@router.api_route(
-    "/json/{sub_id}",
-    methods=["GET", "HEAD"],
-    response_class=PlainTextResponse,
-)
-async def get_subscription(sub_id: str, request: Request) -> Response:
-    if not validate_sub_id(sub_id):
-        return PlainTextResponse(status_code=400, content="invalid sub_id")
+def build_subscription_router(json_path: str) -> APIRouter:
+    router = APIRouter()
+    route_path = f"{json_path.rstrip('/')}/{{sub_id}}"
 
-    settings = request.app.state.settings
-    repo = CatalogRepository(Database(settings.db_path))
-    upstream_base = resolve_upstream_base_url(
-        settings,
-        repo.get_setting(PANEL_API_BASE_URL_KEY),
+    @router.api_route(
+        route_path,
+        methods=["GET", "HEAD"],
+        response_class=PlainTextResponse,
     )
-    upstream = UpstreamClient(settings, base_url=upstream_base)
-    query_string = request.url.query
+    async def get_subscription(sub_id: str, request: Request) -> Response:
+        if not validate_sub_id(sub_id):
+            return PlainTextResponse(status_code=400, content="invalid sub_id")
 
-    try:
-        result = await upstream.fetch(
-            sub_id,
-            query_string=query_string,
-            request_headers=dict(request.headers),
+        settings = request.app.state.settings
+        repo = CatalogRepository(Database(settings.db_path))
+        upstream_base = resolve_upstream_base_url(
+            settings,
+            repo.get_setting(PANEL_API_BASE_URL_KEY),
         )
-    except UpstreamError:
-        return PlainTextResponse(status_code=502, content="upstream unavailable")
+        upstream = UpstreamClient(settings, base_url=upstream_base)
+        query_string = request.url.query
 
-    if result.status_code == 404:
-        return Response(status_code=404)
-    if result.status_code >= 500:
-        return PlainTextResponse(status_code=502, content="upstream error")
-    if result.status_code != 200:
-        return PlainTextResponse(status_code=result.status_code, content=result.body)
+        try:
+            result = await upstream.fetch(
+                sub_id,
+                query_string=query_string,
+                request_headers=dict(request.headers),
+            )
+        except UpstreamError:
+            return PlainTextResponse(status_code=502, content="upstream unavailable")
 
-    if request.method == "HEAD":
-        return Response(status_code=200, headers=result.headers)
+        if result.status_code == 404:
+            return Response(status_code=404)
+        if result.status_code >= 500:
+            return PlainTextResponse(status_code=502, content="upstream error")
+        if result.status_code != 200:
+            return PlainTextResponse(status_code=result.status_code, content=result.body)
 
-    try:
-        payload: SubscriptionPayload = json.loads(result.body)
-        validate_payload(payload)
-        transformed = request.app.state.transform_service.transform(sub_id, payload)
-        body = _serialize_payload(transformed)
-    except (json.JSONDecodeError, ValueError, TypeError) as exc:
-        logger.warning("invalid upstream json for sub_id=%s: %s", sub_id, exc)
-        return PlainTextResponse(status_code=502, content="invalid upstream json")
+        if request.method == "HEAD":
+            return Response(status_code=200, headers=result.headers)
 
-    return PlainTextResponse(
-        status_code=200,
-        content=body,
-        headers={
-            **result.headers,
-            "Content-Type": "application/json; charset=utf-8",
-            "Cache-Control": "no-store",
-        },
-    )
+        try:
+            payload: SubscriptionPayload = json.loads(result.body)
+            validate_payload(payload)
+            transformed = request.app.state.transform_service.transform(sub_id, payload)
+            body = _serialize_payload(transformed)
+        except (json.JSONDecodeError, ValueError, TypeError) as exc:
+            logger.warning("invalid upstream json for sub_id=%s: %s", sub_id, exc)
+            return PlainTextResponse(status_code=502, content="invalid upstream json")
 
+        return PlainTextResponse(
+            status_code=200,
+            content=body,
+            headers={
+                **result.headers,
+                "Content-Type": "application/json; charset=utf-8",
+                "Cache-Control": "no-store",
+            },
+        )
 
-@router.get("/health")
-async def health() -> JSONResponse:
-    return JSONResponse({"status": "ok"})
+    @router.get("/health")
+    async def health() -> JSONResponse:
+        return JSONResponse({"status": "ok"})
+
+    return router

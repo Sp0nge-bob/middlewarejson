@@ -29,7 +29,7 @@ VPN Client → Nginx (HTTPS) → Middleware Agent → 3x-ui (локально)
 
 ### 3.1. Базовый endpoint
 
-`GET /json/<sub_id>` (+ `HEAD`)
+`GET {UPSTREAM_JSON_PATH}/<sub_id>` (+ `HEAD`)
 
 1. Запрос к upstream: `{UPSTREAM_BASE_URL}{UPSTREAM_JSON_PATH}/<sub_id>`.
 2. Парсинг и валидация JSON (объект или массив; наличие `outbounds`).

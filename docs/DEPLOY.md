@@ -70,8 +70,8 @@ CLI подскажет эту команду после установки.
 Фрагмент для существующего `server { listen 443 ssl; ... }`:
 
 ```nginx
-location /json/ {
-    proxy_pass http://127.0.0.1:8085;   # AGENT_PORT из .env
+location <AGENT_JSON_PATH>/ {
+    proxy_pass http://127.0.0.1:8085;   # AGENT_PORT из .env; путь = UPSTREAM_JSON_PATH
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
@@ -137,7 +137,7 @@ systemctl --user restart middlewarejson   # или systemctl restart
 - [ ] `.env` не в git, права `600`
 - [ ] Panel API token ротирован после любых утечек
 - [ ] `UPSTREAM_BASE_URL` — sub-сервер, не панель
-- [ ] nginx проксирует только `/json/`
+- [ ] nginx проксирует только ваш `AGENT_JSON_PATH` (обычно = `UPSTREAM_JSON_PATH`)
 - [ ] `TRANSFORM_MODE=rules` если нужны балансировщики
 - [ ] `/health` отвечает через loopback
 - [ ] Тестовая подписка в HAPP открывается и содержит ожидаемые профили

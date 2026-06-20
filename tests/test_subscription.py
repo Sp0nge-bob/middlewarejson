@@ -10,6 +10,7 @@ from app.main import app
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_sub.json"
 SAMPLE_BODY = FIXTURE.read_text(encoding="utf-8")
+JSON_SUB_PATH = "/json"
 
 
 @pytest.fixture
@@ -33,7 +34,7 @@ def test_health(client: TestClient) -> None:
 
 
 def test_invalid_sub_id(client: TestClient) -> None:
-    response = client.get("/json/short")
+    response = client.get(f"{JSON_SUB_PATH}/short")
     assert response.status_code == 400
 
 
@@ -45,7 +46,7 @@ def test_upstream_404(client: TestClient) -> None:
     mock_client.__aexit__.return_value = None
 
     with patch("app.services.upstream.httpx.AsyncClient", return_value=mock_client):
-        response = client.get("/json/abcd1234efgh5678")
+        response = client.get(f"{JSON_SUB_PATH}/abcd1234efgh5678")
 
     assert response.status_code == 404
     assert response.text == ""
@@ -68,7 +69,7 @@ def test_passthrough_json_and_headers(client: TestClient) -> None:
     mock_client.__aexit__.return_value = None
 
     with patch("app.services.upstream.httpx.AsyncClient", return_value=mock_client):
-        response = client.get("/json/abcd1234efgh5678")
+        response = client.get(f"{JSON_SUB_PATH}/abcd1234efgh5678")
 
     assert response.status_code == 200
     assert response.headers["subscription-userinfo"] == (

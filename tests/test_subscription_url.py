@@ -3,12 +3,13 @@ import pytest
 from app.models.subscription import parse_subscription_reference
 
 EXAMPLE_SUB_ID = "abcd1234efgh5678"
+EXAMPLE_JSON_PATH = "/json"
 
 
 def test_parse_full_url() -> None:
     assert (
         parse_subscription_reference(
-            f"https://example.com/json/{EXAMPLE_SUB_ID}"
+            f"https://example.com{EXAMPLE_JSON_PATH}/{EXAMPLE_SUB_ID}"
         )
         == EXAMPLE_SUB_ID
     )
@@ -21,7 +22,7 @@ def test_parse_sub_id_only() -> None:
 def test_parse_domain_url() -> None:
     assert (
         parse_subscription_reference(
-            f"https://example.com/json/{EXAMPLE_SUB_ID}"
+            f"https://example.com{EXAMPLE_JSON_PATH}/{EXAMPLE_SUB_ID}"
         )
         == EXAMPLE_SUB_ID
     )

@@ -1,6 +1,6 @@
 # middlewarejson
 
-Middleware между VPN-клиентами (HAPP и др.) и панелью **3x-ui**. Проксирует JSON-подписки (`/json/{sub_id}`), сохраняет заголовки upstream и применяет трансформации: балансировщики по группам клиентов, теги, фильтры.
+Middleware между VPN-клиентами (HAPP и др.) и панелью **3x-ui**. Проксирует JSON-подписки по настраиваемому пути (`UPSTREAM_JSON_PATH`), сохраняет заголовки upstream и применяет трансформации: балансировщики по группам клиентов, теги, фильтры.
 
 **English:** JSON subscription proxy and transform layer for 3x-ui — passthrough or rules-based balancers per client group.
 
@@ -53,9 +53,9 @@ curl -s http://127.0.0.1:8080/health
 Скопируйте JSON URL из карточки клиента в 3x-ui и разбейте на base + path:
 
 ```
-https://node1.example.com/json/abcd1234efgh5678
+https://node1.example.com/<ваш-путь>/abcd1234efgh5678
   → UPSTREAM_BASE_URL=https://node1.example.com
-  → UPSTREAM_JSON_PATH=/json
+  → UPSTREAM_JSON_PATH=/<ваш-путь>
 ```
 
 Подробнее: [docs/CONFIGURATION.md](docs/CONFIGURATION.md).

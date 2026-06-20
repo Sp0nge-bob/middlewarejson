@@ -18,6 +18,10 @@ class Settings(BaseSettings):
         default="/json",
         validation_alias="UPSTREAM_JSON_PATH",
     )
+    agent_json_path: str = Field(
+        default="",
+        validation_alias="AGENT_JSON_PATH",
+    )
     request_timeout_sec: float = Field(
         default=15.0,
         validation_alias="REQUEST_TIMEOUT_SEC",
@@ -68,6 +72,12 @@ class Settings(BaseSettings):
         default="24h",
         validation_alias="PANEL_SYNC_INTERVAL",
     )
+
+    def resolved_agent_json_path(self) -> str:
+        explicit = self.agent_json_path.strip()
+        if explicit:
+            return explicit.rstrip("/")
+        return self.upstream_json_path.rstrip("/")
 
     def resolved_panel_base_url(self) -> str:
         return (self.panel_api_base_url or self.upstream_base_url).rstrip("/")

@@ -11,7 +11,7 @@
 | Переменная | По умолчанию | Описание |
 |------------|--------------|----------|
 | `UPSTREAM_BASE_URL` | *(пусто)* | Базовый URL **sub-сервера** подписок 3x-ui. Не URL панели. |
-| `UPSTREAM_JSON_PATH` | `/json` | Путь к JSON-эндпоинту без `{sub_id}` |
+| `UPSTREAM_JSON_PATH` | `/json` | Путь к JSON-эндпоинту upstream без `{sub_id}` |
 | `UPSTREAM_VERIFY_SSL` | `true` | Проверка TLS-сертификата upstream |
 | `UPSTREAM_HOST_HEADER` | *(пусто)* | Подмена заголовка `Host` при запросе к upstream |
 | `REQUEST_TIMEOUT_SEC` | `15` | Таймаут HTTP-запроса к upstream (сек) |
@@ -24,6 +24,7 @@
 |------------|--------------|----------|
 | `AGENT_HOST` | `127.0.0.1` | Адрес bind uvicorn. На VPS обычно `127.0.0.1` (доступ через nginx). |
 | `AGENT_PORT` | `8080` | Порт агента. Должен совпадать с `proxy_pass` в nginx. |
+| `AGENT_JSON_PATH` | *(как upstream)* | Путь подписки на агенте. Пусто — берётся из `UPSTREAM_JSON_PATH`. |
 
 ### Трансформации
 
@@ -88,7 +89,7 @@ PANEL_SYNC_INTERVAL=24h
 
 ```
 Клиент HAPP
-    → nginx (443) /json/{sub_id}
+    → nginx (443) {AGENT_JSON_PATH}/{sub_id}
     → middlewarejson (AGENT_HOST:AGENT_PORT)
     → upstream (UPSTREAM_BASE_URL + UPSTREAM_JSON_PATH + sub_id)
     → трансформация (если TRANSFORM_MODE=rules)

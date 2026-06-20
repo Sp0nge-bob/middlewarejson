@@ -222,7 +222,9 @@ def _do_script_settings_show() -> None:
 
     console.print()
     print_field("Агент", f"{settings.agent_host}:{settings.agent_port}")
+    agent_path = settings.resolved_agent_json_path()
     print_field("URL агента", f"http://{settings.agent_host}:{settings.agent_port}")
+    print_field("Путь подписки (агент)", f"{agent_path}/<sub_id>")
     print_field("Режим трансформации", settings.transform_mode)
     print_field("Rules path", settings.rules_path)
     print_field("База данных", settings.db_path)
