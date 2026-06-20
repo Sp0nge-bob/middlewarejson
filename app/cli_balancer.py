@@ -4,8 +4,11 @@ import typer
 from rich.table import Table
 
 from app.cli_ui import (
+    CANCEL_HINT,
     confirm_prompt,
     console,
+    is_exit_choice,
+    print_cancelled,
     print_error,
     print_field,
     print_info,
@@ -52,11 +55,14 @@ def prompt_strategy(default: str = "roundRobin") -> str:
         return default
 
 
-def prompt_scope(repo: CatalogRepository) -> tuple[str, str]:
+def prompt_scope(repo: CatalogRepository) -> tuple[str, str] | None:
     console.print("[bold]Область применения[/bold]")
     for index, scope in enumerate(SCOPE_CHOICES, start=1):
         console.print(f"  {index}. {BALANCER_SCOPES[scope]}")
-    choice = typer.prompt("Выбор", default="1").strip()
+    choice = typer.prompt(f"Выбор, {CANCEL_HINT}", default="1").strip()
+    if is_exit_choice(choice):
+        print_cancelled()
+        return None
     try:
         scope = SCOPE_CHOICES[int(choice) - 1]
     except (ValueError, IndexError):
@@ -73,11 +79,18 @@ def prompt_scope(repo: CatalogRepository) -> tuple[str, str]:
         console.print("[bold]Выберите группу[/bold]")
         for index, group_name in enumerate(groups):
             console.print(f"  {index}. {group_name}")
-        group_choice = typer.prompt("Номер группы").strip()
+        group_choice = typer.prompt(f"Номер группы, {CANCEL_HINT}").strip()
+        if is_exit_choice(group_choice):
+            print_cancelled()
+            return None
         try:
             return "group", groups[int(group_choice)]
         except (ValueError, IndexError):
-            return "group", typer.prompt("Имя группы").strip()
+            group_name = typer.prompt(f"Имя группы, {CANCEL_HINT}").strip()
+            if is_exit_choice(group_name):
+                print_cancelled()
+                return None
+            return "group", group_name
 
     if scope == "client":
         clients = repo.list_all_clients()
@@ -89,11 +102,18 @@ def prompt_scope(repo: CatalogRepository) -> tuple[str, str]:
             label = client.email or client.sub_id
             group_hint = f" [{client.group_name}]" if client.group_name else ""
             console.print(f"  {index}. {label}{group_hint}  sub_id={client.sub_id}")
-        client_choice = typer.prompt("Номер клиента").strip()
+        client_choice = typer.prompt(f"Номер клиента, {CANCEL_HINT}").strip()
+        if is_exit_choice(client_choice):
+            print_cancelled()
+            return None
         try:
             return "client", clients[int(client_choice)].sub_id
         except (ValueError, IndexError):
-            return "client", typer.prompt("sub_id").strip()
+            sub_id = typer.prompt(f"sub_id, {CANCEL_HINT}").strip()
+            if is_exit_choice(sub_id):
+                print_cancelled()
+                return None
+            return "client", sub_id
 
     return scope, ""
 
@@ -103,7 +123,12 @@ def _prompt_member_indices(rows: list) -> list[str] | None:
         print_warning("Каталог инбаундов пуст. Сначала выполните синхронизацию.")
         return None
 
-    selection = typer.prompt("Номера из колонки # (например 0,2,5)")
+    selection = typer.prompt(
+        f"Номера из колонки # (например 0,2,5), {CANCEL_HINT}"
+    ).strip()
+    if is_exit_choice(selection):
+        print_cancelled()
+        return None
     try:
         indices = [int(part.strip()) for part in selection.split(",") if part.strip()]
         return [str(rows[i]["fingerprint"]) for i in indices]
@@ -184,7 +209,10 @@ def configure_balancer_interactive(
             return
 
         if choice == "1":
-            scope, target = prompt_scope(repo)
+            scope_result = prompt_scope(repo)
+            if scope_result is None:
+                continue
+            scope, target = scope_result
             repo.set_balancer_scope(balancer.tag, scope, target)
             print_success(f"Область применения: {format_scope(scope, target)}")
         elif choice == "2":
@@ -231,7 +259,10 @@ def create_balancer_interactive(
     strategy = prompt_strategy()
 
     print_step(4, 4, "Область применения")
-    scope, scope_target = prompt_scope(repo)
+    scope_result = prompt_scope(repo)
+    if scope_result is None:
+        return
+    scope, scope_target = scope_result
 
     repo.create_balancer(
         tag=tag,
@@ -272,9 +303,12 @@ def delete_balancer_interactive(repo: CatalogRepository, balancers: list) -> Non
         return
 
     choice = typer.prompt(
-        "Номер или идентификатор для удаления (Enter — отмена)",
+        f"Номер или идентификатор для удаления (Enter — отмена, {CANCEL_HINT})",
         default="",
     ).strip()
+    if is_exit_choice(choice):
+        print_cancelled()
+        return
     tag = _resolve_balancer_tag(repo, balancers, choice)
     if tag is None:
         return
@@ -324,9 +358,12 @@ def run_balancers_menu(
                 print_warning("Сначала создайте балансировщик")
                 continue
             pick = typer.prompt(
-                "Номер или идентификатор (Enter — отмена)",
+                f"Номер или идентификатор (Enter — отмена, {CANCEL_HINT})",
                 default="",
             ).strip()
+            if is_exit_choice(pick):
+                print_cancelled()
+                continue
             tag = _resolve_balancer_tag(repo, balancers, pick)
             if tag is None:
                 continue

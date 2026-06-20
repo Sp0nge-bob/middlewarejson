@@ -5,6 +5,7 @@ from rich import box
 from rich.table import Table
 
 from app.cli_ui import (
+    CANCEL_HINT,
     confirm_prompt,
     console,
     print_error,
@@ -162,7 +163,9 @@ def _print_inbound_table(
     table.columns[6].footer = ""
     console.print(table)
     if for_selection:
-        print_info("Выбирайте номера из колонки # (0, 1, 2…), не ID из панели")
+        print_info(
+            f"Выбирайте номера из колонки # (0, 1, 2…), не ID из панели. {CANCEL_HINT}"
+        )
 
 
 def _resolved_panel_settings(repo: CatalogRepository) -> tuple[str, str, str]:

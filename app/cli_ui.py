@@ -12,6 +12,12 @@ console = Console()
 
 _YES = frozenset({"y", "yes", "д", "да"})
 _NO = frozenset({"n", "no", "н", "нет"})
+_EXIT_ALIASES = frozenset({"exit", "выход", "quit", "q", "отмена", "cancel"})
+CANCEL_HINT = "exit — отмена"
+
+
+def is_exit_choice(value: str) -> bool:
+    return value.strip().casefold() in _EXIT_ALIASES
 
 
 def _decode_stdin_line() -> str:
@@ -94,6 +100,10 @@ def print_info(message: str) -> None:
 
 def print_field(label: str, value: str) -> None:
     console.print(f"  [dim]{label}:[/dim] {value}")
+
+
+def print_cancelled() -> None:
+    print_info("Отменено")
 
 
 def prompt_line(label: str = "Выбор") -> str:
