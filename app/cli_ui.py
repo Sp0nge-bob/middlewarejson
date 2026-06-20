@@ -20,22 +20,69 @@ def is_exit_choice(value: str) -> bool:
     return value.strip().casefold() in _EXIT_ALIASES
 
 
+def _cyrillic_letter_count(text: str) -> int:
+    return sum(1 for char in text if "\u0400" <= char <= "\u04ff")
+
+
+def _looks_like_mojibake(text: str) -> bool:
+    return any(marker in text for marker in ("Рђ", "РІ", "Рѕ", "СЂ", "С‡", "СЏ"))
+
+
+def _repair_mojibake(text: str) -> str:
+    """UTF-8, ошибочно прочитанный как cp1251/latin-1 → нормальная кириллица."""
+    if not text:
+        return text
+    for encoding in ("cp1251", "latin-1"):
+        try:
+            repaired = text.encode(encoding).decode("utf-8")
+        except (UnicodeDecodeError, UnicodeEncodeError):
+            continue
+        if not repaired or repaired == text:
+            continue
+        if _looks_like_mojibake(text) or _cyrillic_letter_count(repaired) > _cyrillic_letter_count(
+            text
+        ):
+            return repaired
+    return text
+
+
 def _decode_bytes(data: bytes) -> str:
     if not data:
         return ""
 
-    candidates: list[str] = []
-    for encoding in ("utf-8", sys.stdin.encoding, locale.getpreferredencoding(False), "cp1251"):
-        if encoding and encoding not in candidates:
-            candidates.append(encoding)
-    candidates.append("latin-1")
+    try:
+        return _repair_mojibake(data.decode("utf-8").strip())
+    except UnicodeDecodeError:
+        pass
 
-    for encoding in candidates:
+    for encoding in ("cp1251", "cp866"):
         try:
             return data.decode(encoding).strip()
         except UnicodeDecodeError:
             continue
-    return data.decode("utf-8", errors="replace").strip()
+
+    preferred = locale.getpreferredencoding(False)
+    if preferred and preferred.lower() not in {"utf-8", "ascii"}:
+        try:
+            return data.decode(preferred).strip()
+        except UnicodeDecodeError:
+            pass
+
+    return _repair_mojibake(data.decode("utf-8", errors="replace").strip())
+
+
+def _ensure_utf8_stdio() -> None:
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if not callable(reconfigure):
+            continue
+        try:
+            reconfigure(encoding="utf-8")
+        except (OSError, ValueError):
+            pass
+
+
+_ensure_utf8_stdio()
 
 
 def _decode_stdin_line() -> str:
@@ -62,7 +109,7 @@ def text_prompt(
     sys.stdout.flush()
 
     try:
-        value = _decode_stdin_line()
+        value = _repair_mojibake(_decode_stdin_line())
     except (EOFError, KeyboardInterrupt):
         console.print()
         return default

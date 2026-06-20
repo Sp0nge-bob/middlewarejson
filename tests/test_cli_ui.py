@@ -23,6 +23,19 @@ def test_decode_bytes_prefers_utf8_over_cp1251() -> None:
     assert _decode_bytes("Авто-подбор".encode("utf-8")) == "Авто-подбор"
 
 
+def test_decode_bytes_reads_cp1251_terminal() -> None:
+    from app.cli_ui import _decode_bytes
+
+    assert _decode_bytes("Авто-подбор".encode("cp1251")) == "Авто-подбор"
+
+
+def test_repair_mojibake_from_cp1251_misread_utf8() -> None:
+    from app.cli_ui import _repair_mojibake
+
+    broken = "Авто-подбор".encode("utf-8").decode("cp1251")
+    assert _repair_mojibake(broken) == "Авто-подбор"
+
+
 def test_text_prompt_preserves_cyrillic(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.cli_ui._decode_stdin_line",
