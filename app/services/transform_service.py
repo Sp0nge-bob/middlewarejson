@@ -21,15 +21,15 @@ class TransformService:
         if self._settings.transform_mode != "rules":
             return self._passthrough.transform(payload)
 
-        balancer_tag = self._repository.get_balancer_tag_for_sub_id(sub_id)
-        if not balancer_tag:
+        balancer_tags = self._repository.get_balancer_tags_for_sub_id(sub_id)
+        if not balancer_tags:
             return self._passthrough.transform(payload)
 
-        db_rules = build_balancer_rules(self._repository, balancer_tag)
+        db_rules = build_balancer_rules(self._repository, balancer_tags)
         if db_rules is None:
             logger.warning(
-                "balancer '%s' is missing or empty, passthrough for sub_id=%s",
-                balancer_tag,
+                "balancers %s are missing or empty, passthrough for sub_id=%s",
+                balancer_tags,
                 sub_id,
             )
             return self._passthrough.transform(payload)

@@ -1,8 +1,15 @@
 import typer
-from rich.console import Console
-from rich.panel import Panel
 from rich.table import Table
 
+from app.cli_ui import (
+    console,
+    print_error,
+    print_header,
+    print_menu_item,
+    print_section,
+    print_success,
+    print_warning,
+)
 from app.config import settings
 from app.db.database import Database
 from app.db.repository import CatalogRepository
@@ -21,7 +28,7 @@ from app.cli_balancer import (
     create_balancer_interactive,
     list_balancers_interactive,
 )
-from app.models.balancer import format_scope
+from app.models.balancer import format_scope, format_strategy
 from app.services.profile_builder import default_balancer_tag
 
 app = typer.Typer(
@@ -37,9 +44,6 @@ app.add_typer(settings_app, name="settings")
 app.add_typer(catalog_app, name="catalog")
 app.add_typer(balancer_app, name="balancer")
 app.add_typer(group_app, name="group")
-
-console = Console()
-
 
 def _repo() -> CatalogRepository:
     return CatalogRepository(Database(settings.db_path))
@@ -87,14 +91,14 @@ def _resolve_member_fingerprints(
 
 
 def _print_inbound_table(rows: list[dict[str, object]]) -> None:
-    table = Table(title="Inbound catalog")
+    table = Table(title="Каталог инбаундов")
     table.add_column("#", style="dim")
     table.add_column("ID", style="cyan")
-    table.add_column("Active", style="green")
-    table.add_column("Remark")
-    table.add_column("Proto")
-    table.add_column("Address:Port")
-    table.add_column("Fingerprint")
+    table.add_column("Активен", style="green")
+    table.add_column("Название")
+    table.add_column("Протокол")
+    table.add_column("Адрес:Порт")
+    table.add_column("Отпечаток")
 
     for index, row in enumerate(rows):
         fingerprint = str(row["fingerprint"])
@@ -104,7 +108,7 @@ def _print_inbound_table(rows: list[dict[str, object]]) -> None:
         table.add_row(
             str(index),
             str(panel_id) if panel_id is not None else "-",
-            "yes" if row["is_active"] else "no",
+            "да" if row["is_active"] else "нет",
             str(row["remarks"]),
             str(row["protocol"]),
             address_port,
@@ -244,22 +248,21 @@ def _do_group_sync() -> None:
 def _do_group_list() -> None:
     repo = _repo()
     groups = repo.list_groups()
-    assignments = {item.group_name: item for item in repo.list_group_assignments()}
 
     if not groups:
-        console.print("[yellow]Групп нет. Запустите: group sync[/yellow]")
+        print_warning("Групп нет. Выполните синхронизацию (п. 8 в меню).")
         return
 
-    table = Table(title="Client groups")
-    table.add_column("Group")
-    table.add_column("Clients", justify="right")
-    table.add_column("Balancer")
+    table = Table(title="Группы клиентов")
+    table.add_column("Группа")
+    table.add_column("Клиентов", justify="right")
+    table.add_column("Балансировщики")
 
     for group_name in groups:
         clients = repo.list_clients_by_group(group_name)
-        assignment = assignments.get(group_name)
-        balancer = assignment.balancer_tag if assignment else "(none)"
-        table.add_row(group_name, str(len(clients)), balancer)
+        balancers = repo.list_balancers_for_group(group_name)
+        balancer_label = ", ".join(balancers) if balancers else "—"
+        table.add_row(group_name, str(len(clients)), balancer_label)
 
     console.print(table)
 
@@ -291,8 +294,9 @@ def _do_group_show(group_name: str) -> None:
         console.print(f"[yellow]Клиентов в группе '{group_name.strip()}' нет[/yellow]")
         return
 
-    balancer = repo.get_balancer_for_group(group_name.strip())
-    console.print(f"[bold]{group_name.strip()}[/bold] — balancer: {balancer or '(none)'}")
+    balancers = repo.list_balancers_for_group(group_name.strip())
+    balancer_label = ", ".join(balancers) if balancers else "—"
+    console.print(f"[bold]{group_name.strip()}[/bold] — балансировщики: {balancer_label}")
     for client in clients:
         status = "on" if client.enable else "off"
         console.print(f"  {client.email or '(no email)'}  sub_id={client.sub_id}  [{status}]")
@@ -329,65 +333,100 @@ def _print_balancer_list_only() -> None:
 
 
 def _do_balancer_delete_interactive() -> None:
-    tag = typer.prompt("Тег балансировщика")
+    tag = typer.prompt("Идентификатор балансировщика")
     if _repo().delete_balancer(tag.strip()):
-        console.print(f"[green]Удалён балансировщик '{tag.strip()}'[/green]")
+        print_success(f"Удалён балансировщик «{tag.strip()}»")
     else:
-        console.print(f"[red]Балансировщик '{tag.strip()}' не найден[/red]")
+        print_error(f"Балансировщик «{tag.strip()}» не найден")
+
+
+def _do_sync_all() -> None:
+    repo = _repo()
+    if not _ensure_panel_token(repo):
+        return
+
+    console.print("[bold]Синхронизация каталога инбаундов…[/bold]")
+    try:
+        catalog_result = sync_catalog(settings, repo)
+    except Exception as exc:
+        print_error(f"Синхронизация каталога не удалась: {exc}")
+        return
+
+    print_success(
+        f"Каталог: {catalog_result['total_active']} эндпоинтов "
+        f"из {catalog_result['panel_inbounds']} инбаундов панели "
+        f"(обновлено={catalog_result['upserted']}, "
+        f"деактивировано={catalog_result['deactivated']})"
+    )
+
+    console.print()
+    console.print("[bold]Синхронизация клиентов и групп…[/bold]")
+    try:
+        clients_result = sync_clients(settings, repo)
+    except Exception as exc:
+        print_error(f"Синхронизация клиентов не удалась: {exc}")
+        return
+
+    print_success(
+        f"Клиенты: {clients_result['upserted']} записей "
+        f"({clients_result['groups']} групп, удалено={clients_result['removed']})"
+    )
 
 
 def run_interactive_menu() -> None:
-    console.print(
-        Panel.fit(
-            "[bold]middlewarejson[/bold] — балансировщики по группам клиентов 3x-ui",
-            border_style="cyan",
-        )
+    print_header(
+        "middlewarejson",
+        subtitle="трансформация JSON-подписок 3x-ui",
     )
 
     while True:
+        print_section("Настройки")
+        print_menu_item(1, "Показать настройки панели")
+        print_menu_item(2, "Проверить подключение к панели")
+
+        print_section("Данные панели")
+        print_menu_item(3, "Список инбаундов")
+        print_menu_item(4, "Список групп")
+
+        print_section("Балансировщики")
+        print_menu_item(5, "Создать балансировщик")
+        print_menu_item(6, "Список и настройка балансировщиков")
+        print_menu_item(7, "Удалить балансировщик")
+
+        print_section("Синхронизация")
+        print_menu_item(8, "Синхронизация")
+
         console.print()
-        console.print("[bold]Меню[/bold]")
-        console.print("  1. Настройки")
-        console.print("  2. Проверить Panel API")
-        console.print("  3. Синхронизировать каталог (catalog sync)")
-        console.print("  4. Список инбаундов")
-        console.print("  5. Синхронизировать клиентов (group sync)")
-        console.print("  6. Список групп")
-        console.print("  7. Создать балансировщик")
-        console.print("  8. Список / настройка балансировщиков")
-        console.print("  9. Удалить балансировщик")
-        console.print("  0. Выход")
+        print_menu_item(0, "Выход")
 
         choice = typer.prompt("Выбор", default="0").strip()
 
         if choice == "0":
-            console.print("[dim]Bye[/dim]")
+            console.print("[dim]До свидания[/dim]")
             break
         if choice == "1":
             _do_settings_show()
-            if typer.confirm("Изменить Panel API token?", default=False):
+            if typer.confirm("Изменить API token панели?", default=False):
                 token = typer.prompt("API token", hide_input=True).strip()
                 if token:
                     _repo().set_setting(PANEL_API_TOKEN_KEY, token)
-                    console.print("[green]Token сохранён[/green]")
+                    print_success("Token сохранён")
         elif choice == "2":
             _do_panel_test()
         elif choice == "3":
-            _do_catalog_sync()
-        elif choice == "4":
             _do_catalog_list(active_only=False)
-        elif choice == "5":
-            _do_group_sync()
-        elif choice == "6":
+        elif choice == "4":
             _do_group_list()
-        elif choice == "7":
+        elif choice == "5":
             _do_balancer_create_interactive()
-        elif choice == "8":
+        elif choice == "6":
             _do_balancer_list(interactive=True)
-        elif choice == "9":
+        elif choice == "7":
             _do_balancer_delete_interactive()
+        elif choice == "8":
+            _do_sync_all()
         else:
-            console.print("[yellow]Неизвестный пункт[/yellow]")
+            print_warning("Неизвестный пункт")
 
 
 @app.callback()
@@ -497,9 +536,9 @@ def balancer_create(
         scope=scope,
         scope_target=scope_target,
     )
-    console.print(
-        f"[green]Балансировщик '{balancer_tag}' создан "
-        f"({format_scope(scope, scope_target)}, {strategy})[/green]"
+    print_success(
+        f"Балансировщик «{balancer_tag}» создан — "
+        f"{format_scope(scope, scope_target)}, {format_strategy(strategy)}"
     )
 
 

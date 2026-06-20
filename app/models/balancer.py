@@ -17,12 +17,30 @@ BALANCER_STRATEGIES: list[BalancerStrategy] = [
     "random",
 ]
 
+STRATEGY_LABELS: dict[BalancerStrategy, str] = {
+    "roundRobin": "По очереди",
+    "leastLoad": "Меньше нагрузка",
+    "leastPing": "Минимальный пинг",
+    "random": "Случайный выбор",
+}
+
+STRATEGY_HINTS: dict[BalancerStrategy, str] = {
+    "roundRobin": "каждый запрос — следующий инбаунд по кругу",
+    "leastLoad": "выбор сервера с наименьшей нагрузкой",
+    "leastPing": "ближайший по задержке",
+    "random": "случайный инбаунд из состава",
+}
+
 SCOPE_PRIORITY: dict[BalancerScope, int] = {
     "client": 3,
     "group": 2,
     "all": 1,
     "disabled": 0,
 }
+
+
+def format_strategy(strategy: str) -> str:
+    return STRATEGY_LABELS.get(strategy, strategy)  # type: ignore[arg-type]
 
 
 def format_scope(scope: str, scope_target: str) -> str:

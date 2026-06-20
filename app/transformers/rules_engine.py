@@ -166,44 +166,52 @@ def _build_balancer_config(
     return config
 
 
+def _balancer_pool_nodes(
+    balancer: BalancerRule,
+    nodes: list[ProxyNode],
+) -> list[ProxyNode]:
+    member_tags = set(_resolve_balancer_members(balancer, nodes))
+    if not member_tags:
+        return []
+    return [node for node in nodes if node.tag in member_tags]
+
+
+def _node_in_any_balancer(node: ProxyNode, rules: TransformRules, nodes: list[ProxyNode]) -> bool:
+    return any(
+        node.tag in _resolve_balancer_members(balancer, nodes)
+        for balancer in rules.balancers
+    )
+
+
 def _build_grouped_output(
     configs: list[dict[str, Any]],
     nodes: list[ProxyNode],
     rules: TransformRules,
 ) -> list[dict[str, Any]]:
     nodes_by_index = {node.source_index: node for node in nodes}
-    balancer_for_tag = _node_balancer_map(rules, nodes)
     emitted_balancers: set[str] = set()
-    balancer_nodes: dict[str, list[ProxyNode]] = {}
-
-    for node in nodes:
-        balancer = balancer_for_tag.get(node.tag)
-        if balancer is None:
-            continue
-        balancer_nodes.setdefault(balancer.tag, []).append(node)
-
     result: list[dict[str, Any]] = []
+
     for index, config in enumerate(configs):
         node = nodes_by_index.get(index)
         if node is None:
             result.append(copy.deepcopy(config))
             continue
 
-        balancer = balancer_for_tag.get(node.tag)
-        if balancer is None:
+        emitted_here = False
+        for balancer in rules.balancers:
+            if balancer.tag in emitted_balancers:
+                continue
+            pool_nodes = _balancer_pool_nodes(balancer, nodes)
+            if not pool_nodes or node.tag not in {item.tag for item in pool_nodes}:
+                continue
+            template = configs[pool_nodes[0].source_index]
+            result.append(_build_balancer_config(template, pool_nodes, balancer))
+            emitted_balancers.add(balancer.tag)
+            emitted_here = True
+
+        if not emitted_here and not _node_in_any_balancer(node, rules, nodes):
             result.append(copy.deepcopy(config))
-            continue
-
-        if balancer.tag in emitted_balancers:
-            continue
-
-        pool_nodes = balancer_nodes.get(balancer.tag, [])
-        if not pool_nodes:
-            continue
-
-        template = configs[pool_nodes[0].source_index]
-        result.append(_build_balancer_config(template, pool_nodes, balancer))
-        emitted_balancers.add(balancer.tag)
 
     return result
 

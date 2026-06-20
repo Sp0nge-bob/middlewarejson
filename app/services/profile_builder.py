@@ -17,15 +17,17 @@ def _slugify_tag(value: str) -> str:
 
 def build_balancer_rules(
     repository: CatalogRepository,
-    balancer_tag: str,
+    balancer_tags: list[str] | str,
 ) -> TransformRules | None:
-    balancer = repository.get_balancer_by_tag(balancer_tag)
-    if balancer is None or not balancer.member_fingerprints:
-        return None
+    if isinstance(balancer_tags, str):
+        balancer_tags = [balancer_tags]
 
-    return TransformRules(
-        output=OutputConfig(format="grouped"),
-        balancers=[
+    balancers: list[BalancerRule] = []
+    for balancer_tag in balancer_tags:
+        balancer = repository.get_balancer_by_tag(balancer_tag)
+        if balancer is None or not balancer.member_fingerprints:
+            continue
+        balancers.append(
             BalancerRule(
                 tag=balancer.tag,
                 remarks=balancer.remarks or balancer.tag,
@@ -34,7 +36,14 @@ def build_balancer_rules(
                     BalancerMember(inbound_ids=balancer.member_fingerprints),
                 ],
             )
-        ],
+        )
+
+    if not balancers:
+        return None
+
+    return TransformRules(
+        output=OutputConfig(format="grouped"),
+        balancers=balancers,
     )
 
 

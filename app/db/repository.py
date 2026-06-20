@@ -153,42 +153,6 @@ class CatalogRepository:
             rows = conn.execute(query, params).fetchall()
         return [str(row["fingerprint"]) for row in rows]
 
-    def _clear_conflicting_scopes(
-        self,
-        conn: sqlite3.Connection,
-        scope: BalancerScope,
-        scope_target: str,
-        *,
-        except_tag: str,
-    ) -> None:
-        if scope == "group" and scope_target:
-            conn.execute(
-                """
-                UPDATE balancers
-                SET scope = 'disabled', scope_target = ''
-                WHERE scope = 'group' AND scope_target = ? AND tag != ?
-                """,
-                (scope_target, except_tag),
-            )
-        elif scope == "client" and scope_target:
-            conn.execute(
-                """
-                UPDATE balancers
-                SET scope = 'disabled', scope_target = ''
-                WHERE scope = 'client' AND scope_target = ? AND tag != ?
-                """,
-                (scope_target, except_tag),
-            )
-        elif scope == "all":
-            conn.execute(
-                """
-                UPDATE balancers
-                SET scope = 'disabled', scope_target = ''
-                WHERE scope = 'all' AND tag != ?
-                """,
-                (except_tag,),
-            )
-
     def create_balancer(
         self,
         tag: str,
@@ -204,12 +168,6 @@ class CatalogRepository:
         target = scope_target.strip()
 
         with self._db.connect() as conn:
-            self._clear_conflicting_scopes(
-                conn,
-                normalized_scope,
-                target,
-                except_tag=tag,
-            )
             cursor = conn.execute(
                 """
                 INSERT INTO balancers (tag, remarks, strategy, scope, scope_target)
@@ -273,12 +231,6 @@ class CatalogRepository:
             new_target = ""
 
         with self._db.connect() as conn:
-            self._clear_conflicting_scopes(
-                conn,
-                new_scope,
-                new_target,
-                except_tag=tag,
-            )
             conn.execute(
                 """
                 UPDATE balancers
@@ -480,52 +432,60 @@ class CatalogRepository:
             for row in rows
         ]
 
-    def get_balancer_tag_for_sub_id(self, sub_id: str) -> str | None:
-        candidates: list[tuple[int, str]] = []
+    def get_balancer_tags_for_sub_id(self, sub_id: str) -> list[str]:
+        tags: list[str] = []
+        seen: set[str] = set()
+
+        def _append_active(rows: list[sqlite3.Row]) -> None:
+            for row in rows:
+                tag = str(row["tag"])
+                if tag in seen:
+                    continue
+                balancer = self.get_balancer_by_tag(tag)
+                if balancer and balancer.member_fingerprints:
+                    tags.append(tag)
+                    seen.add(tag)
 
         with self._db.connect() as conn:
-            row = conn.execute(
-                """
-                SELECT tag FROM balancers
-                WHERE scope = 'client' AND scope_target = ?
-                """,
-                (sub_id,),
-            ).fetchone()
-            if row:
-                candidates.append((3, str(row["tag"])))
+            _append_active(
+                conn.execute(
+                    """
+                    SELECT tag FROM balancers
+                    WHERE scope = 'client' AND scope_target = ?
+                    ORDER BY tag
+                    """,
+                    (sub_id,),
+                ).fetchall()
+            )
 
             group_name = self.get_group_for_sub_id(sub_id)
             if group_name:
-                row = conn.execute(
+                _append_active(
+                    conn.execute(
+                        """
+                        SELECT tag FROM balancers
+                        WHERE scope = 'group' AND scope_target = ?
+                        ORDER BY tag
+                        """,
+                        (group_name,),
+                    ).fetchall()
+                )
+
+            _append_active(
+                conn.execute(
                     """
                     SELECT tag FROM balancers
-                    WHERE scope = 'group' AND scope_target = ?
-                    """,
-                    (group_name,),
-                ).fetchone()
-                if row:
-                    candidates.append((2, str(row["tag"])))
+                    WHERE scope = 'all'
+                    ORDER BY tag
+                    """
+                ).fetchall()
+            )
 
-            row = conn.execute(
-                """
-                SELECT tag FROM balancers
-                WHERE scope = 'all'
-                ORDER BY tag
-                LIMIT 1
-                """
-            ).fetchone()
-            if row:
-                candidates.append((1, str(row["tag"])))
+        return tags
 
-        if not candidates:
-            return None
-
-        candidates.sort(key=lambda item: item[0], reverse=True)
-        for _, tag in candidates:
-            balancer = self.get_balancer_by_tag(tag)
-            if balancer and balancer.member_fingerprints:
-                return tag
-        return None
+    def get_balancer_tag_for_sub_id(self, sub_id: str) -> str | None:
+        tags = self.get_balancer_tags_for_sub_id(sub_id)
+        return tags[0] if tags else None
 
     def assign_group_balancer(self, group_name: str, balancer_tag: str) -> None:
         if self.get_balancer_by_tag(balancer_tag) is None:
@@ -533,29 +493,49 @@ class CatalogRepository:
         if not self.set_balancer_scope(balancer_tag, "group", group_name):
             raise ValueError(f"balancer '{balancer_tag}' not found")
 
-    def unassign_group_balancer(self, group_name: str) -> bool:
+    def unassign_group_balancer(
+        self,
+        group_name: str,
+        *,
+        balancer_tag: str | None = None,
+    ) -> bool:
         with self._db.connect() as conn:
-            cursor = conn.execute(
-                """
-                UPDATE balancers
-                SET scope = 'disabled', scope_target = ''
-                WHERE scope = 'group' AND scope_target = ?
-                """,
-                (group_name,),
-            )
+            if balancer_tag:
+                cursor = conn.execute(
+                    """
+                    UPDATE balancers
+                    SET scope = 'disabled', scope_target = ''
+                    WHERE scope = 'group' AND scope_target = ? AND tag = ?
+                    """,
+                    (group_name, balancer_tag),
+                )
+            else:
+                cursor = conn.execute(
+                    """
+                    UPDATE balancers
+                    SET scope = 'disabled', scope_target = ''
+                    WHERE scope = 'group' AND scope_target = ?
+                    """,
+                    (group_name,),
+                )
             conn.commit()
         return cursor.rowcount > 0
 
-    def get_balancer_for_group(self, group_name: str) -> str | None:
+    def list_balancers_for_group(self, group_name: str) -> list[str]:
         with self._db.connect() as conn:
-            row = conn.execute(
+            rows = conn.execute(
                 """
                 SELECT tag FROM balancers
                 WHERE scope = 'group' AND scope_target = ?
+                ORDER BY tag
                 """,
                 (group_name,),
-            ).fetchone()
-        return str(row["tag"]) if row else None
+            ).fetchall()
+        return [str(row["tag"]) for row in rows]
+
+    def get_balancer_for_group(self, group_name: str) -> str | None:
+        tags = self.list_balancers_for_group(group_name)
+        return tags[0] if tags else None
 
     def list_group_assignments(self) -> list[GroupAssignment]:
         with self._db.connect() as conn:

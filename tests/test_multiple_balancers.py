@@ -9,54 +9,84 @@ from app.services.transform_service import TransformService
 RAW_FIXTURE = Path(__file__).parent / "fixtures" / "raw_3xui_subscription.json"
 
 
-def _setup_repo(db_path: Path) -> CatalogRepository:
-    repo = CatalogRepository(Database(db_path))
+def test_multiple_balancers_same_group(tmp_path: Path) -> None:
+    repo = CatalogRepository(Database(tmp_path / "multi_group.db"))
     nl_fp = "vless|node1.example.com|ws|/ws-path|443|tls|"
     us_fp = "vless|node5.example.com|ws|/ws-path|443|tls|"
 
     repo.create_balancer(
-        tag="premium-pool",
-        remarks="NL+USA Balance",
+        tag="nl-pool",
+        remarks="NL Balance",
         strategy="roundRobin",
-        member_fingerprints=[nl_fp, us_fp],
+        member_fingerprints=[nl_fp],
+        scope="group",
+        scope_target="premium",
+    )
+    repo.create_balancer(
+        tag="us-pool",
+        remarks="USA Balance",
+        strategy="leastLoad",
+        member_fingerprints=[us_fp],
         scope="group",
         scope_target="premium",
     )
     repo.upsert_clients(
         [
             ClientRecord("client_a_sub_id12", "premium", "premium@example.com", True),
-            ClientRecord("client_b_sub_id12", "basic", "basic@example.com", True),
+        ]
+    )
+
+    tags = repo.get_balancer_tags_for_sub_id("client_a_sub_id12")
+    assert tags == ["nl-pool", "us-pool"]
+
+    configs = json.loads(RAW_FIXTURE.read_text(encoding="utf-8"))
+    service = TransformService(Settings(transform_mode="rules", db_path=str(repo._db.path)))
+    result = service.transform("client_a_sub_id12", configs)
+    remarks = [item["remarks"] for item in result]
+
+    assert "NL Balance" in remarks
+    assert "USA Balance" in remarks
+
+
+def test_multiple_balancers_all_scope(tmp_path: Path) -> None:
+    repo = CatalogRepository(Database(tmp_path / "multi_all.db"))
+    nl_fp = "vless|node1.example.com|ws|/ws-path|443|tls|"
+    us_fp = "vless|node5.example.com|ws|/ws-path|443|tls|"
+
+    repo.create_balancer(
+        tag="global-nl",
+        remarks="Global NL",
+        strategy="roundRobin",
+        member_fingerprints=[nl_fp],
+        scope="all",
+    )
+    repo.create_balancer(
+        tag="global-us",
+        remarks="Global USA",
+        strategy="random",
+        member_fingerprints=[us_fp],
+        scope="all",
+    )
+    repo.upsert_clients(
+        [
             ClientRecord("any_sub_id_12345", "", "nogroup@example.com", True),
         ]
     )
-    return repo
 
-
-def test_disabled_balancer_does_not_apply(tmp_path: Path) -> None:
-    repo = _setup_repo(tmp_path / "disabled.db")
-    repo.set_balancer_scope("premium-pool", "disabled")
+    tags = repo.get_balancer_tags_for_sub_id("any_sub_id_12345")
+    assert tags == ["global-nl", "global-us"]
 
     configs = json.loads(RAW_FIXTURE.read_text(encoding="utf-8"))
     service = TransformService(Settings(transform_mode="rules", db_path=str(repo._db.path)))
+    result = service.transform("any_sub_id_12345", configs)
+    remarks = [item["remarks"] for item in result]
 
-    result = service.transform("client_a_sub_id12", configs)
-    assert "NL+USA Balance" not in [item["remarks"] for item in result]
-
-
-def test_all_scope_applies_to_everyone(tmp_path: Path) -> None:
-    repo = _setup_repo(tmp_path / "all.db")
-    repo.set_balancer_scope("premium-pool", "all")
-
-    configs = json.loads(RAW_FIXTURE.read_text(encoding="utf-8"))
-    service = TransformService(Settings(transform_mode="rules", db_path=str(repo._db.path)))
-
-    for sub_id in ("client_a_sub_id12", "client_b_sub_id12", "any_sub_id_12345"):
-        result = service.transform(sub_id, configs)
-        assert "NL+USA Balance" in [item["remarks"] for item in result]
+    assert "Global NL" in remarks
+    assert "Global USA" in remarks
 
 
-def test_client_and_group_balancers_both_apply(tmp_path: Path) -> None:
-    repo = CatalogRepository(Database(tmp_path / "client.db"))
+def test_client_group_and_all_balancers_combine(tmp_path: Path) -> None:
+    repo = CatalogRepository(Database(tmp_path / "combined.db"))
     nl_fp = "vless|node1.example.com|ws|/ws-path|443|tls|"
     us_fp = "vless|node5.example.com|ws|/ws-path|443|tls|"
 
@@ -76,12 +106,25 @@ def test_client_and_group_balancers_both_apply(tmp_path: Path) -> None:
         scope="client",
         scope_target="client_a_sub_id12",
     )
+    repo.create_balancer(
+        tag="global-pool",
+        remarks="Global Pool",
+        strategy="leastPing",
+        member_fingerprints=[nl_fp],
+        scope="all",
+    )
     repo.upsert_clients(
         [
             ClientRecord("client_a_sub_id12", "premium", "premium@example.com", True),
             ClientRecord("client_b_sub_id12", "premium", "basic@example.com", True),
         ]
     )
+
+    client_a_tags = repo.get_balancer_tags_for_sub_id("client_a_sub_id12")
+    assert client_a_tags == ["solo-pool", "group-pool", "global-pool"]
+
+    client_b_tags = repo.get_balancer_tags_for_sub_id("client_b_sub_id12")
+    assert client_b_tags == ["group-pool", "global-pool"]
 
     configs = json.loads(RAW_FIXTURE.read_text(encoding="utf-8"))
     service = TransformService(Settings(transform_mode="rules", db_path=str(repo._db.path)))
@@ -90,8 +133,10 @@ def test_client_and_group_balancers_both_apply(tmp_path: Path) -> None:
     solo_remarks = [item["remarks"] for item in solo_result]
     assert "Solo Pool" in solo_remarks
     assert "Group Pool" in solo_remarks
+    assert "Global Pool" in solo_remarks
 
     group_result = service.transform("client_b_sub_id12", configs)
     group_remarks = [item["remarks"] for item in group_result]
     assert "Group Pool" in group_remarks
+    assert "Global Pool" in group_remarks
     assert "Solo Pool" not in group_remarks
