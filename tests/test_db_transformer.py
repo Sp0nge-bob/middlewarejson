@@ -49,7 +49,6 @@ def test_group_balancer_applies_only_to_assigned_group(tmp_path: Path) -> None:
 
     settings = Settings(
         transform_mode="rules",
-        rules_path="config/does-not-exist.yaml",
         db_path=str(db_path),
     )
     service = TransformService(settings)
