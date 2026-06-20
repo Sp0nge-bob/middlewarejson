@@ -14,6 +14,7 @@ from app.cli_ui import (
     print_step,
     print_success,
     print_warning,
+    prompt_line,
 )
 from app.db.repository import CatalogRepository
 from app.models.balancer import (
@@ -308,8 +309,8 @@ def run_balancers_menu(
         print_menu_item(3, "Удалить")
         print_menu_item(0, "Назад")
 
-        choice = typer.prompt("Выбор", default="0").strip()
-        if choice == "0":
+        choice = prompt_line("Выбор [0 — назад]")
+        if choice == "0" or not choice:
             return
 
         if choice == "1":

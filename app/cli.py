@@ -7,11 +7,12 @@ from app.cli_ui import (
     print_error,
     print_field,
     print_header,
-    print_info,
     print_menu_item,
+
     print_section,
     print_success,
     print_warning,
+    prompt_menu_choice,
 )
 from app.config import settings
 from app.db.database import Database
@@ -388,15 +389,15 @@ def run_interactive_menu() -> None:
         subtitle="трансформация JSON-подписок 3x-ui",
     )
     _print_interactive_menu()
-    print_info("? — показать меню")
 
     while True:
-        choice = typer.prompt("Выбор", default="").strip().casefold()
+        choice = prompt_menu_choice()
 
         if choice in _MENU_HELP:
             _print_interactive_menu()
             continue
         if not choice:
+            print_warning("Введите номер: 1-6, 0 — выход, ? — полное меню")
             continue
 
         if choice == "0":

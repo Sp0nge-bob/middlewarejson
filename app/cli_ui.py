@@ -94,3 +94,26 @@ def print_info(message: str) -> None:
 
 def print_field(label: str, value: str) -> None:
     console.print(f"  [dim]{label}:[/dim] {value}")
+
+
+def print_menu_compact() -> None:
+    console.print(
+        "[dim]1 настройки · 2 панель · 3 инбаунды · 4 группы · "
+        "5 балансировщики · 6 синхронизация · 0 выход · ? полное меню[/dim]"
+    )
+
+
+def prompt_line(label: str = "Выбор") -> str:
+    """Строка ввода без typer — без пустых скобок [] в приглашении."""
+    console.print(f"{label}: ", end="")
+    sys.stdout.flush()
+    try:
+        return _decode_stdin_line().casefold()
+    except (EOFError, KeyboardInterrupt):
+        console.print()
+        return ""
+
+
+def prompt_menu_choice() -> str:
+    print_menu_compact()
+    return prompt_line("Выбор")
