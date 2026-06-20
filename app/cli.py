@@ -200,6 +200,13 @@ def _do_settings_show() -> None:
     print_field("API token", _mask_token(token))
     print_field("Балансировщиков", str(len(balancers)))
     print_field("Привязок к группам", str(len(assignments)))
+    mode = settings.transform_mode.strip().lower()
+    print_field("Режим трансформации", settings.transform_mode)
+    if balancers and mode != "rules":
+        print_warning(
+            "Балансировщики не применяются в подписке. "
+            "Установите TRANSFORM_MODE=rules в .env и перезапустите сервер."
+        )
 
 
 def _do_edit_panel_settings(repo: CatalogRepository) -> None:

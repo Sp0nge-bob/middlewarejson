@@ -18,11 +18,23 @@ class TransformService:
         self._repository = CatalogRepository(Database(settings.db_path))
 
     def transform(self, sub_id: str, payload: SubscriptionPayload) -> SubscriptionPayload:
-        if self._settings.transform_mode != "rules":
+        mode = self._settings.transform_mode.strip().lower()
+        if mode != "rules":
+            logger.info(
+                "transform skipped for sub_id=%s: TRANSFORM_MODE=%s (need rules)",
+                sub_id,
+                self._settings.transform_mode,
+            )
             return self._passthrough.transform(payload)
 
         balancer_tags = self._repository.get_balancer_tags_for_sub_id(sub_id)
         if not balancer_tags:
+            group_name = self._repository.get_group_for_sub_id(sub_id)
+            logger.info(
+                "transform skipped for sub_id=%s: no balancers (client group=%s)",
+                sub_id,
+                group_name or "not in index",
+            )
             return self._passthrough.transform(payload)
 
         db_rules = build_balancer_rules(self._repository, balancer_tags)
@@ -34,4 +46,9 @@ class TransformService:
             )
             return self._passthrough.transform(payload)
 
+        logger.info(
+            "transform rules for sub_id=%s: balancers=%s",
+            sub_id,
+            balancer_tags,
+        )
         return RulesTransformer(db_rules).transform(payload)
