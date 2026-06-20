@@ -4,6 +4,10 @@ Middleware между VPN-клиентами (HAPP и др.) и панелью *
 
 **English:** JSON subscription proxy and transform layer for 3x-ui — passthrough or rules-based balancers per client group.
 
+## Rust-версия
+
+Порт на Rust с паритетом функций и совместимостью с `data/middleware.db` и `.env`: [middlewarejson-rust](https://github.com/Sp0nge-bob/middlewarejson-rust).
+
 ## Возможности
 
 - **Прозрачный прокси** — relay JSON без изменений (`TRANSFORM_MODE=passthrough`)

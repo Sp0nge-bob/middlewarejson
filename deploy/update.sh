@@ -2,8 +2,8 @@
 # Update middlewarejson on the server and restart systemd service.
 #
 # Usage:
-#   export APP_DIR=~/jsonscript   # or /opt/middlewarejson
 #   ./deploy/update.sh
+#   export APP_DIR=/path/to/project && ./deploy/update.sh
 
 set -euo pipefail
 
@@ -11,7 +11,7 @@ APP_DIR="${APP_DIR:-/opt/middlewarejson}"
 
 if [[ ! -d "$APP_DIR" ]]; then
   echo "APP_DIR not found: $APP_DIR" >&2
-  echo "Set APP_DIR to your project path, e.g. export APP_DIR=~/jsonscript" >&2
+  echo "Set APP_DIR to your project path, e.g. export APP_DIR=/opt/middlewarejson" >&2
   exit 1
 fi
 

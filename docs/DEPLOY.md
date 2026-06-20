@@ -5,8 +5,9 @@
 ## 1. Установка
 
 ```bash
-git clone https://github.com/Sp0nge-bob/middlewarejson.git ~/jsonscript
-cd ~/jsonscript
+sudo mkdir -p /opt
+sudo git clone https://github.com/Sp0nge-bob/middlewarejson.git /opt/middlewarejson
+cd /opt/middlewarejson
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -104,15 +105,15 @@ journalctl --user -u middlewarejson -f
 Скрипт [deploy/update.sh](../deploy/update.sh):
 
 ```bash
-export APP_DIR=~/jsonscript   # путь к проекту
 chmod +x deploy/update.sh
 ./deploy/update.sh
+# или: export APP_DIR=/path/to/project && ./deploy/update.sh
 ```
 
 Или вручную:
 
 ```bash
-cd ~/jsonscript
+cd /opt/middlewarejson
 git pull
 source .venv/bin/activate
 pip install -r requirements.txt -q

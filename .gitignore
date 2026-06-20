@@ -26,4 +26,6 @@ data/
 # Cursor / Grok local tooling
 mcps/
 .grok/
+agent-tools/
+terminals/
 gemini-code-*.md
