@@ -1,7 +1,9 @@
+import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from app.db.database import Database
+from app.models.balancer import BalancerScope, normalize_scope, normalize_strategy
 from app.models.inbound import InboundDescriptor
 
 
@@ -11,6 +13,8 @@ class BalancerRecord:
     tag: str
     remarks: str
     strategy: str
+    scope: BalancerScope
+    scope_target: str
     member_fingerprints: list[str]
 
 
@@ -149,23 +153,74 @@ class CatalogRepository:
             rows = conn.execute(query, params).fetchall()
         return [str(row["fingerprint"]) for row in rows]
 
+    def _clear_conflicting_scopes(
+        self,
+        conn: sqlite3.Connection,
+        scope: BalancerScope,
+        scope_target: str,
+        *,
+        except_tag: str,
+    ) -> None:
+        if scope == "group" and scope_target:
+            conn.execute(
+                """
+                UPDATE balancers
+                SET scope = 'disabled', scope_target = ''
+                WHERE scope = 'group' AND scope_target = ? AND tag != ?
+                """,
+                (scope_target, except_tag),
+            )
+        elif scope == "client" and scope_target:
+            conn.execute(
+                """
+                UPDATE balancers
+                SET scope = 'disabled', scope_target = ''
+                WHERE scope = 'client' AND scope_target = ? AND tag != ?
+                """,
+                (scope_target, except_tag),
+            )
+        elif scope == "all":
+            conn.execute(
+                """
+                UPDATE balancers
+                SET scope = 'disabled', scope_target = ''
+                WHERE scope = 'all' AND tag != ?
+                """,
+                (except_tag,),
+            )
+
     def create_balancer(
         self,
         tag: str,
         remarks: str,
         strategy: str,
         member_fingerprints: list[str],
+        *,
+        scope: str = "disabled",
+        scope_target: str = "",
     ) -> int:
+        normalized_scope = normalize_scope(scope)
+        normalized_strategy = normalize_strategy(strategy)
+        target = scope_target.strip()
+
         with self._db.connect() as conn:
+            self._clear_conflicting_scopes(
+                conn,
+                normalized_scope,
+                target,
+                except_tag=tag,
+            )
             cursor = conn.execute(
                 """
-                INSERT INTO balancers (tag, remarks, strategy)
-                VALUES (?, ?, ?)
+                INSERT INTO balancers (tag, remarks, strategy, scope, scope_target)
+                VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(tag) DO UPDATE SET
                     remarks = excluded.remarks,
-                    strategy = excluded.strategy
+                    strategy = excluded.strategy,
+                    scope = excluded.scope,
+                    scope_target = excluded.scope_target
                 """,
-                (tag, remarks, strategy),
+                (tag, remarks, normalized_strategy, normalized_scope, target),
             )
             balancer_id = cursor.lastrowid
             if balancer_id == 0:
@@ -190,6 +245,78 @@ class CatalogRepository:
             conn.commit()
         return balancer_id
 
+    def update_balancer(
+        self,
+        tag: str,
+        *,
+        remarks: str | None = None,
+        strategy: str | None = None,
+        scope: str | None = None,
+        scope_target: str | None = None,
+        member_fingerprints: list[str] | None = None,
+    ) -> bool:
+        balancer = self.get_balancer_by_tag(tag)
+        if balancer is None:
+            return False
+
+        new_remarks = remarks if remarks is not None else balancer.remarks
+        new_strategy = (
+            normalize_strategy(strategy) if strategy is not None else balancer.strategy
+        )
+        new_scope = normalize_scope(scope) if scope is not None else balancer.scope
+        new_target = (
+            scope_target.strip()
+            if scope_target is not None
+            else balancer.scope_target
+        )
+        if new_scope in ("disabled", "all"):
+            new_target = ""
+
+        with self._db.connect() as conn:
+            self._clear_conflicting_scopes(
+                conn,
+                new_scope,
+                new_target,
+                except_tag=tag,
+            )
+            conn.execute(
+                """
+                UPDATE balancers
+                SET remarks = ?, strategy = ?, scope = ?, scope_target = ?
+                WHERE tag = ?
+                """,
+                (new_remarks, new_strategy, new_scope, new_target, tag),
+            )
+
+            if member_fingerprints is not None:
+                row = conn.execute(
+                    "SELECT id FROM balancers WHERE tag = ?",
+                    (tag,),
+                ).fetchone()
+                balancer_id = int(row["id"])
+                conn.execute(
+                    "DELETE FROM balancer_members WHERE balancer_id = ?",
+                    (balancer_id,),
+                )
+                for fingerprint in member_fingerprints:
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO balancer_members (balancer_id, inbound_fingerprint)
+                        VALUES (?, ?)
+                        """,
+                        (balancer_id, fingerprint),
+                    )
+            conn.commit()
+        return True
+
+    def set_balancer_scope(
+        self,
+        tag: str,
+        scope: str,
+        scope_target: str = "",
+    ) -> bool:
+        return self.update_balancer(tag, scope=scope, scope_target=scope_target)
+
     def delete_balancer(self, tag: str) -> bool:
         with self._db.connect() as conn:
             cursor = conn.execute(
@@ -203,7 +330,7 @@ class CatalogRepository:
         with self._db.connect() as conn:
             rows = conn.execute(
                 """
-                SELECT id, tag, remarks, strategy
+                SELECT id, tag, remarks, strategy, scope, scope_target
                 FROM balancers
                 ORDER BY tag
                 """
@@ -226,6 +353,8 @@ class CatalogRepository:
                         tag=str(row["tag"]),
                         remarks=str(row["remarks"]),
                         strategy=str(row["strategy"]),
+                        scope=normalize_scope(str(row["scope"])),
+                        scope_target=str(row["scope_target"]),
                         member_fingerprints=[
                             str(member["inbound_fingerprint"]) for member in members
                         ],
@@ -333,30 +462,85 @@ class CatalogRepository:
             ).fetchall()
         return [str(row["group_name"]) for row in rows]
 
-    def assign_group_balancer(self, group_name: str, balancer_tag: str) -> None:
-        with self._db.connect() as conn:
-            balancer = conn.execute(
-                "SELECT 1 FROM balancers WHERE tag = ?",
-                (balancer_tag,),
-            ).fetchone()
-            if balancer is None:
-                raise ValueError(f"balancer '{balancer_tag}' not found")
+    def list_all_clients(self, *, enabled_only: bool = True) -> list[ClientRecord]:
+        query = "SELECT sub_id, group_name, email, enable FROM client_index"
+        if enabled_only:
+            query += " WHERE enable = 1"
+        query += " ORDER BY email, sub_id"
 
-            conn.execute(
-                """
-                INSERT INTO group_balancers (group_name, balancer_tag)
-                VALUES (?, ?)
-                ON CONFLICT(group_name) DO UPDATE SET
-                    balancer_tag = excluded.balancer_tag
-                """,
-                (group_name, balancer_tag),
+        with self._db.connect() as conn:
+            rows = conn.execute(query).fetchall()
+        return [
+            ClientRecord(
+                sub_id=str(row["sub_id"]),
+                group_name=str(row["group_name"]),
+                email=str(row["email"]),
+                enable=bool(row["enable"]),
             )
-            conn.commit()
+            for row in rows
+        ]
+
+    def get_balancer_tag_for_sub_id(self, sub_id: str) -> str | None:
+        candidates: list[tuple[int, str]] = []
+
+        with self._db.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT tag FROM balancers
+                WHERE scope = 'client' AND scope_target = ?
+                """,
+                (sub_id,),
+            ).fetchone()
+            if row:
+                candidates.append((3, str(row["tag"])))
+
+            group_name = self.get_group_for_sub_id(sub_id)
+            if group_name:
+                row = conn.execute(
+                    """
+                    SELECT tag FROM balancers
+                    WHERE scope = 'group' AND scope_target = ?
+                    """,
+                    (group_name,),
+                ).fetchone()
+                if row:
+                    candidates.append((2, str(row["tag"])))
+
+            row = conn.execute(
+                """
+                SELECT tag FROM balancers
+                WHERE scope = 'all'
+                ORDER BY tag
+                LIMIT 1
+                """
+            ).fetchone()
+            if row:
+                candidates.append((1, str(row["tag"])))
+
+        if not candidates:
+            return None
+
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        for _, tag in candidates:
+            balancer = self.get_balancer_by_tag(tag)
+            if balancer and balancer.member_fingerprints:
+                return tag
+        return None
+
+    def assign_group_balancer(self, group_name: str, balancer_tag: str) -> None:
+        if self.get_balancer_by_tag(balancer_tag) is None:
+            raise ValueError(f"balancer '{balancer_tag}' not found")
+        if not self.set_balancer_scope(balancer_tag, "group", group_name):
+            raise ValueError(f"balancer '{balancer_tag}' not found")
 
     def unassign_group_balancer(self, group_name: str) -> bool:
         with self._db.connect() as conn:
             cursor = conn.execute(
-                "DELETE FROM group_balancers WHERE group_name = ?",
+                """
+                UPDATE balancers
+                SET scope = 'disabled', scope_target = ''
+                WHERE scope = 'group' AND scope_target = ?
+                """,
                 (group_name,),
             )
             conn.commit()
@@ -365,24 +549,28 @@ class CatalogRepository:
     def get_balancer_for_group(self, group_name: str) -> str | None:
         with self._db.connect() as conn:
             row = conn.execute(
-                "SELECT balancer_tag FROM group_balancers WHERE group_name = ?",
+                """
+                SELECT tag FROM balancers
+                WHERE scope = 'group' AND scope_target = ?
+                """,
                 (group_name,),
             ).fetchone()
-        return str(row["balancer_tag"]) if row else None
+        return str(row["tag"]) if row else None
 
     def list_group_assignments(self) -> list[GroupAssignment]:
         with self._db.connect() as conn:
             rows = conn.execute(
                 """
                 SELECT
-                    gb.group_name,
-                    gb.balancer_tag,
+                    b.scope_target AS group_name,
+                    b.tag AS balancer_tag,
                     COUNT(ci.sub_id) AS client_count
-                FROM group_balancers gb
+                FROM balancers b
                 LEFT JOIN client_index ci
-                    ON ci.group_name = gb.group_name AND ci.enable = 1
-                GROUP BY gb.group_name, gb.balancer_tag
-                ORDER BY gb.group_name
+                    ON ci.group_name = b.scope_target AND ci.enable = 1
+                WHERE b.scope = 'group' AND b.scope_target != ''
+                GROUP BY b.scope_target, b.tag
+                ORDER BY b.scope_target
                 """
             ).fetchall()
         return [

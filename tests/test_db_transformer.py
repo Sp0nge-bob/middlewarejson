@@ -22,6 +22,8 @@ def test_group_balancer_applies_only_to_assigned_group(tmp_path: Path) -> None:
         remarks="NL+USA Balance",
         strategy="roundRobin",
         member_fingerprints=[nl_fp, us_fp],
+        scope="group",
+        scope_target="premium",
     )
     repo.upsert_clients(
         [
@@ -45,8 +47,6 @@ def test_group_balancer_applies_only_to_assigned_group(tmp_path: Path) -> None:
             ),
         ]
     )
-    repo.assign_group_balancer("premium", "premium-pool")
-
     settings = Settings(
         transform_mode="rules",
         db_path=str(db_path),

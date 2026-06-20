@@ -76,6 +76,33 @@ class Database:
                 """
             )
 
+        if "balancers" in tables:
+            balancer_columns = {
+                row[1] for row in conn.execute("PRAGMA table_info(balancers)").fetchall()
+            }
+            if "scope" not in balancer_columns:
+                conn.execute(
+                    "ALTER TABLE balancers ADD COLUMN scope TEXT NOT NULL DEFAULT 'disabled'"
+                )
+            if "scope_target" not in balancer_columns:
+                conn.execute(
+                    "ALTER TABLE balancers ADD COLUMN scope_target TEXT NOT NULL DEFAULT ''"
+                )
+
+            if "group_balancers" in tables:
+                rows = conn.execute(
+                    "SELECT group_name, balancer_tag FROM group_balancers"
+                ).fetchall()
+                for row in rows:
+                    conn.execute(
+                        """
+                        UPDATE balancers
+                        SET scope = 'group', scope_target = ?
+                        WHERE tag = ? AND scope = 'disabled' AND scope_target = ''
+                        """,
+                        (str(row["group_name"]), str(row["balancer_tag"])),
+                    )
+
         if "balancers" not in tables:
             return
 

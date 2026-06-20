@@ -16,6 +16,12 @@ from app.services.panel_api import (
     resolve_panel_token,
     resolve_panel_web_base_path,
 )
+from app.cli_balancer import (
+    configure_balancer_interactive,
+    create_balancer_interactive,
+    list_balancers_interactive,
+)
+from app.models.balancer import format_scope
 from app.services.profile_builder import default_balancer_tag
 
 app = typer.Typer(
@@ -24,7 +30,7 @@ app = typer.Typer(
 )
 settings_app = typer.Typer(help="Настройки Panel API")
 catalog_app = typer.Typer(help="Каталог инбаундов из 3x-ui Panel API")
-balancer_app = typer.Typer(help="Балансировщики (привязка к группам через group assign)")
+balancer_app = typer.Typer(help="Балансировщики и их назначение")
 group_app = typer.Typer(help="Группы клиентов 3x-ui")
 
 app.add_typer(settings_app, name="settings")
@@ -293,50 +299,33 @@ def _do_group_show(group_name: str) -> None:
 
 
 def _do_balancer_create_interactive() -> None:
-    rows = _do_catalog_list(active_only=True)
-    if not rows:
-        return
-
-    selection = typer.prompt("Номера строк из таблицы выше (например 0,6,9)")
-    try:
-        indices = [int(part.strip()) for part in selection.split(",") if part.strip()]
-        fingerprints = [str(rows[i]["fingerprint"]) for i in indices]
-    except (ValueError, IndexError):
-        console.print("[red]Неверные индексы[/red]")
-        return
-
-    name = typer.prompt("Имя балансировщика (для HAPP)", default="Balance")
-    tag = default_balancer_tag(name)
-
-    _repo().create_balancer(
-        tag=tag,
-        remarks=name.strip(),
-        strategy="roundRobin",
-        member_fingerprints=fingerprints,
+    create_balancer_interactive(
+        _repo(),
+        list_inbounds=_do_catalog_list,
+        resolve_member_fingerprints=_resolve_member_fingerprints,
     )
-    console.print(f"[green]Балансировщик '{tag}' создан[/green]")
 
 
-def _do_balancer_list() -> None:
+def _do_balancer_list(*, interactive: bool = False) -> None:
+    if interactive:
+        list_balancers_interactive(
+            _repo(),
+            list_inbounds=_do_catalog_list,
+            resolve_member_fingerprints=_resolve_member_fingerprints,
+        )
+    else:
+        _print_balancer_list_only()
+
+
+def _print_balancer_list_only() -> None:
+    from app.cli_balancer import print_balancer_table
+
     repo = _repo()
     balancers = repo.list_balancers()
     if not balancers:
         console.print("[yellow]Балансировщиков нет[/yellow]")
         return
-
-    catalog_by_fp = {
-        str(row["fingerprint"]): row for row in repo.list_inbounds(active_only=False)
-    }
-
-    for balancer in balancers:
-        console.print(f"\n[bold]{balancer.tag}[/bold] — {balancer.remarks} ({balancer.strategy})")
-        for fingerprint in balancer.member_fingerprints:
-            row = catalog_by_fp.get(fingerprint)
-            if row and row.get("panel_inbound_id") is not None:
-                panel_info = f"id={row['panel_inbound_id']} ep={row.get('endpoint_index', 0)}"
-            else:
-                panel_info = "id=?"
-            console.print(f"  [{panel_info}] {fingerprint}")
+    print_balancer_table(balancers)
 
 
 def _do_balancer_delete_interactive() -> None:
@@ -345,25 +334,6 @@ def _do_balancer_delete_interactive() -> None:
         console.print(f"[green]Удалён балансировщик '{tag.strip()}'[/green]")
     else:
         console.print(f"[red]Балансировщик '{tag.strip()}' не найден[/red]")
-
-
-def _do_group_assign_interactive() -> None:
-    _do_group_sync()
-    _do_group_list()
-    groups = _repo().list_groups()
-    if not groups:
-        return
-
-    group_name = typer.prompt("Имя группы")
-    balancers = _repo().list_balancers()
-    if not balancers:
-        console.print("[red]Сначала создайте балансировщик[/red]")
-        return
-
-    for balancer in balancers:
-        console.print(f"  - {balancer.tag} ({balancer.remarks})")
-    balancer_tag = typer.prompt("Тег балансировщика")
-    _do_group_assign(group_name, balancer_tag)
 
 
 def run_interactive_menu() -> None:
@@ -384,9 +354,8 @@ def run_interactive_menu() -> None:
         console.print("  5. Синхронизировать клиентов (group sync)")
         console.print("  6. Список групп")
         console.print("  7. Создать балансировщик")
-        console.print("  8. Список балансировщиков")
-        console.print("  9. Назначить балансировщик группе")
-        console.print(" 10. Удалить балансировщик")
+        console.print("  8. Список / настройка балансировщиков")
+        console.print("  9. Удалить балансировщик")
         console.print("  0. Выход")
 
         choice = typer.prompt("Выбор", default="0").strip()
@@ -414,10 +383,8 @@ def run_interactive_menu() -> None:
         elif choice == "7":
             _do_balancer_create_interactive()
         elif choice == "8":
-            _do_balancer_list()
+            _do_balancer_list(interactive=True)
         elif choice == "9":
-            _do_group_assign_interactive()
-        elif choice == "10":
             _do_balancer_delete_interactive()
         else:
             console.print("[yellow]Неизвестный пункт[/yellow]")
@@ -511,6 +478,8 @@ def balancer_create(
     ),
     tag: str = typer.Option("", "--tag", help="Тег балансировщика (по умолчанию из name)"),
     strategy: str = typer.Option("roundRobin", "--strategy"),
+    scope: str = typer.Option("disabled", "--scope", help="disabled|group|all|client"),
+    scope_target: str = typer.Option("", "--scope-target", help="group name или sub_id"),
 ) -> None:
     repo = _repo()
     raw_members = [part.strip() for part in members.split(",") if part.strip()]
@@ -525,13 +494,44 @@ def balancer_create(
         remarks=name,
         strategy=strategy,
         member_fingerprints=fingerprints,
+        scope=scope,
+        scope_target=scope_target,
     )
-    console.print(f"[green]Балансировщик '{balancer_tag}' создан ({len(fingerprints)} members)[/green]")
+    console.print(
+        f"[green]Балансировщик '{balancer_tag}' создан "
+        f"({format_scope(scope, scope_target)}, {strategy})[/green]"
+    )
 
 
 @balancer_app.command("list")
 def balancer_list_cmd() -> None:
-    _do_balancer_list()
+    _print_balancer_list_only()
+
+
+@balancer_app.command("configure")
+def balancer_configure_cmd(
+    tag: str = typer.Option(..., "--tag"),
+) -> None:
+    """Настроить балансировщик: scope, strategy, members."""
+    configure_balancer_interactive(
+        _repo(),
+        tag,
+        list_inbounds=_do_catalog_list,
+        resolve_member_fingerprints=_resolve_member_fingerprints,
+    )
+
+
+@balancer_app.command("set-scope")
+def balancer_set_scope_cmd(
+    tag: str = typer.Option(..., "--tag"),
+    scope: str = typer.Option(..., "--scope"),
+    target: str = typer.Option("", "--target"),
+) -> None:
+    repo = _repo()
+    if not repo.set_balancer_scope(tag, scope, target):
+        console.print(f"[red]Балансировщик '{tag}' не найден[/red]")
+        raise typer.Exit(1)
+    console.print(f"[green]{tag} → {format_scope(scope, target)}[/green]")
 
 
 @balancer_app.command("delete")

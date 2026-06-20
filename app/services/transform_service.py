@@ -21,20 +21,15 @@ class TransformService:
         if self._settings.transform_mode != "rules":
             return self._passthrough.transform(payload)
 
-        group = self._repository.get_group_for_sub_id(sub_id)
-        if not group:
-            return self._passthrough.transform(payload)
-
-        balancer_tag = self._repository.get_balancer_for_group(group)
+        balancer_tag = self._repository.get_balancer_tag_for_sub_id(sub_id)
         if not balancer_tag:
             return self._passthrough.transform(payload)
 
         db_rules = build_balancer_rules(self._repository, balancer_tag)
         if db_rules is None:
             logger.warning(
-                "balancer '%s' for group '%s' is missing or empty, passthrough for sub_id=%s",
+                "balancer '%s' is missing or empty, passthrough for sub_id=%s",
                 balancer_tag,
-                group,
                 sub_id,
             )
             return self._passthrough.transform(payload)

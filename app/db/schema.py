@@ -25,7 +25,9 @@ CREATE TABLE IF NOT EXISTS balancers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tag TEXT NOT NULL UNIQUE,
     remarks TEXT NOT NULL DEFAULT '',
-    strategy TEXT NOT NULL DEFAULT 'roundRobin'
+    strategy TEXT NOT NULL DEFAULT 'roundRobin',
+    scope TEXT NOT NULL DEFAULT 'disabled',
+    scope_target TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS balancer_members (
