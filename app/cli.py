@@ -227,6 +227,10 @@ def _do_script_settings_show() -> None:
     agent_path = settings.resolved_agent_json_path()
     print_field("URL агента", f"http://{settings.agent_host}:{settings.agent_port}")
     print_field("Путь подписки (агент)", f"{agent_path}/<sub_id>")
+    if settings.agent_json_path.strip():
+        print_field("AGENT_JSON_PATH", settings.agent_json_path.strip())
+    elif agent_path != upstream_path:
+        pass
     print_field("Режим трансформации", settings.transform_mode)
     print_field("База данных", settings.db_path)
     print_field("Upstream", f"{upstream_base}{upstream_path}/<sub_id>")
@@ -676,6 +680,19 @@ def service_restart_cmd() -> None:
     from app.services.systemd_service import restart_service
 
     ok, message = restart_service()
+    if ok:
+        print_success(message)
+    else:
+        print_error(message)
+        raise typer.Exit(1)
+
+
+@service_app.command("stop")
+def service_stop_cmd() -> None:
+    """Остановить службу middlewarejson."""
+    from app.services.systemd_service import stop_service
+
+    ok, message = stop_service()
     if ok:
         print_success(message)
     else:

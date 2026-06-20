@@ -113,3 +113,38 @@ def test_not_linux(platform: str, monkeypatch) -> None:
     monkeypatch.setattr(svc.sys, "platform", platform)
     status = svc.read_service_status()
     assert status.error == "Доступно только на Linux"
+
+
+def test_stop_service_success(monkeypatch) -> None:
+    scope = svc.ServiceScope(
+        kind="system",
+        unit_path=Path("/etc/systemd/system/middlewarejson.service"),
+        systemctl_args=(),
+    )
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(svc.subprocess, "run", fake_run)
+    ok, message = svc.stop_service(scope)
+    assert ok is True
+    assert message == "Служба остановлена"
+    assert calls == [["systemctl", "stop", "middlewarejson"]]
+
+
+def test_stop_service_failure(monkeypatch) -> None:
+    scope = svc.ServiceScope(
+        kind="user",
+        unit_path=Path.home() / ".config/systemd/user/middlewarejson.service",
+        systemctl_args=("--user",),
+    )
+
+    def fake_run(command, **kwargs):
+        return MagicMock(returncode=1, stdout="", stderr="Unit not running")
+
+    monkeypatch.setattr(svc.subprocess, "run", fake_run)
+    ok, message = svc.stop_service(scope)
+    assert ok is False
+    assert message == "Unit not running"

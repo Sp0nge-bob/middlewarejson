@@ -206,6 +206,15 @@ def restart_service(scope: ServiceScope | None = None) -> tuple[bool, str]:
     return False, message
 
 
+def stop_service(scope: ServiceScope | None = None) -> tuple[bool, str]:
+    scope = scope or get_service_scope()
+    result = _run_systemctl(scope, ("stop", SERVICE_NAME))
+    if result.returncode == 0:
+        return True, "Служба остановлена"
+    message = (result.stderr or result.stdout or "stop failed").strip()
+    return False, message
+
+
 def install_service(
     settings: Settings,
     *,

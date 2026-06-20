@@ -25,6 +25,7 @@ from app.services.systemd_service import (
     render_unit_file,
     restart_service,
     start_service,
+    stop_service,
     systemctl_available,
 )
 
@@ -81,6 +82,12 @@ def _print_service_status() -> bool:
     if not health_ok and status.active == "active":
         print_warning("Служба active, но /health не отвечает — проверьте порт и логи")
 
+    agent_path = settings.resolved_agent_json_path()
+    print_info(
+        f"Проверка подписки: curl -s http://{settings.agent_host}:"
+        f"{settings.agent_port}{agent_path}/<sub_id>  (только http, не https)"
+    )
+
     if status.journal_tail:
         console.print()
         console.print("[dim]Последние строки journal:[/dim]")
@@ -109,6 +116,10 @@ def run_service_status_menu() -> None:
     else:
         print_menu_item(1, "Запустить (уже работает)")
     print_menu_item(2, "Перезапустить")
+    if status.active == "active":
+        print_menu_item(3, "Остановить")
+    else:
+        print_menu_item(3, "Остановить (уже остановлена)")
 
     choice = prompt_line("Выбор [0 — назад]")
     if choice == "0" or not choice:
@@ -121,6 +132,15 @@ def run_service_status_menu() -> None:
             print_error(message)
     elif choice == "2":
         ok, message = restart_service(status.scope)
+        if ok:
+            print_success(message)
+        else:
+            print_error(message)
+    elif choice == "3":
+        if status.active != "active":
+            print_info("Служба уже остановлена")
+            return
+        ok, message = stop_service(status.scope)
         if ok:
             print_success(message)
         else:
