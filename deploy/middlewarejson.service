@@ -1,0 +1,16 @@
+[Unit]
+Description=middlewarejson — 3x-ui JSON subscription proxy
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/middlewarejson
+EnvironmentFile=/opt/middlewarejson/.env
+# AGENT_HOST / AGENT_PORT заданы в .env; порт должен совпадать с nginx proxy_pass
+ExecStart=/opt/middlewarejson/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8080
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

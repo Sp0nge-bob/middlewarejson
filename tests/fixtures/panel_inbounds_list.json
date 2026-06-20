@@ -1,0 +1,92 @@
+[
+  {
+    "id": 1,
+    "remark": "NL-WS",
+    "protocol": "vless",
+    "port": 443,
+    "shareAddr": "node1.example.com",
+    "enable": true,
+    "streamSettings": "{\"network\":\"ws\",\"security\":\"tls\",\"wsSettings\":{\"path\":\"/ws-path\"}}"
+  },
+  {
+    "id": 2,
+    "remark": "NL-XHTTP",
+    "protocol": "vless",
+    "port": 443,
+    "shareAddr": "node1.example.com",
+    "enable": true,
+    "streamSettings": "{\"network\":\"xhttp\",\"security\":\"tls\",\"xhttpSettings\":{\"path\":\"/xhttp\",\"mode\":\"auto\"}}"
+  },
+  {
+    "id": 3,
+    "remark": "NL-GRPC",
+    "protocol": "vless",
+    "port": 443,
+    "shareAddr": "node1.example.com",
+    "enable": true,
+    "streamSettings": "{\"network\":\"grpc\",\"security\":\"tls\",\"grpcSettings\":{\"serviceName\":\"grpcxui\"}}"
+  },
+  {
+    "id": 4,
+    "remark": "hysteria",
+    "protocol": "hysteria",
+    "port": 443,
+    "shareAddr": "node1.example.com",
+    "enable": true,
+    "streamSettings": "{\"network\":\"hysteria\",\"security\":\"tls\"}"
+  },
+  {
+    "id": 5,
+    "remark": "US-TCP",
+    "protocol": "vless",
+    "port": 443,
+    "shareAddr": "node6.example.com",
+    "enable": true,
+    "streamSettings": "{\"network\":\"tcp\",\"security\":\"reality\",\"realitySettings\":{\"serverName\":\"www.example.com\",\"fingerprint\":\"chrome\"}}"
+  },
+  {
+    "id": 6,
+    "remark": "hysteria-turn",
+    "protocol": "hysteria",
+    "port": 9000,
+    "shareAddr": "127.0.0.1",
+    "enable": true,
+    "streamSettings": "{\"network\":\"hysteria\"}"
+  },
+  {
+    "id": 7,
+    "remark": "US-WS",
+    "protocol": "vless",
+    "port": 443,
+    "shareAddr": "node5.example.com",
+    "enable": true,
+    "streamSettings": "{\"network\":\"ws\",\"security\":\"tls\",\"wsSettings\":{\"path\":\"/ws-path\"}}"
+  },
+  {
+    "id": 8,
+    "remark": "US-GRPC",
+    "protocol": "vless",
+    "port": 443,
+    "shareAddr": "node5.example.com",
+    "enable": true,
+    "streamSettings": "{\"network\":\"grpc\",\"security\":\"tls\",\"grpcSettings\":{\"serviceName\":\"grpcxui\"}}"
+  },
+  {
+    "id": 9,
+    "remark": "ALT-XHTTP",
+    "protocol": "vless",
+    "port": 443,
+    "shareAddr": "node2.example.com",
+    "enable": true,
+    "streamSettings": "{\"network\":\"xhttp\",\"security\":\"tls\",\"tlsSettings\":{\"serverName\":\"node2.example.com\"},\"xhttpSettings\":{\"path\":\"/api/v1/stream/data\",\"mode\":\"packet-up\"}}"
+  },
+  {
+    "id": 10,
+    "remark": "EU-RESERVE",
+    "protocol": "vless",
+    "port": 443,
+    "shareAddr": "node4.example.com",
+    "enable": true,
+    "streamSettings": "{\"network\":\"ws\",\"security\":\"tls\",\"wsSettings\":{\"path\":\"/ws-path\"}}"
+  }
+]

@@ -1,0 +1,62 @@
+[
+  {
+    "remarks": "NL-WS",
+    "inbounds": [{"port": 10808, "protocol": "mixed", "tag": "mixed"}],
+    "outbounds": [
+      {"protocol": "vless", "tag": "proxy", "streamSettings": {"network": "ws"}, "settings": {"address": "node1.example.com", "port": 443}},
+      {"protocol": "freedom", "tag": "direct"},
+      {"protocol": "blackhole", "tag": "block"}
+    ],
+    "routing": {"rules": [{"type": "field", "network": "tcp,udp", "outboundTag": "proxy"}]}
+  },
+  {
+    "remarks": "NL-XHTTP",
+    "inbounds": [{"port": 10808, "protocol": "mixed", "tag": "mixed"}],
+    "outbounds": [
+      {"protocol": "vless", "tag": "proxy", "streamSettings": {"network": "xhttp"}, "settings": {"address": "node1.example.com", "port": 443}},
+      {"protocol": "freedom", "tag": "direct"},
+      {"protocol": "blackhole", "tag": "block"}
+    ],
+    "routing": {"rules": [{"type": "field", "network": "tcp,udp", "outboundTag": "proxy"}]}
+  },
+  {
+    "remarks": "NL-GRPC",
+    "inbounds": [{"port": 10808, "protocol": "mixed", "tag": "mixed"}],
+    "outbounds": [
+      {"protocol": "vless", "tag": "proxy", "streamSettings": {"network": "grpc"}, "settings": {"address": "node1.example.com", "port": 443}},
+      {"protocol": "freedom", "tag": "direct"},
+      {"protocol": "blackhole", "tag": "block"}
+    ],
+    "routing": {"rules": [{"type": "field", "network": "tcp,udp", "outboundTag": "proxy"}]}
+  },
+  {
+    "remarks": "US-WS",
+    "inbounds": [{"port": 10808, "protocol": "mixed", "tag": "mixed"}],
+    "outbounds": [
+      {"protocol": "vless", "tag": "proxy", "streamSettings": {"network": "ws"}, "settings": {"address": "node3.example.com", "port": 443}},
+      {"protocol": "freedom", "tag": "direct"},
+      {"protocol": "blackhole", "tag": "block"}
+    ],
+    "routing": {"rules": [{"type": "field", "network": "tcp,udp", "outboundTag": "proxy"}]}
+  },
+  {
+    "remarks": "US-GRPC",
+    "inbounds": [{"port": 10808, "protocol": "mixed", "tag": "mixed"}],
+    "outbounds": [
+      {"protocol": "vless", "tag": "proxy", "streamSettings": {"network": "grpc"}, "settings": {"address": "node3.example.com", "port": 443}},
+      {"protocol": "freedom", "tag": "direct"},
+      {"protocol": "blackhole", "tag": "block"}
+    ],
+    "routing": {"rules": [{"type": "field", "network": "tcp,udp", "outboundTag": "proxy"}]}
+  },
+  {
+    "remarks": "hysteria",
+    "inbounds": [{"port": 10808, "protocol": "mixed", "tag": "mixed"}],
+    "outbounds": [
+      {"protocol": "hysteria", "tag": "proxy", "settings": {"address": "node1.example.com", "port": 443}},
+      {"protocol": "freedom", "tag": "direct"},
+      {"protocol": "blackhole", "tag": "block"}
+    ],
+    "routing": {"rules": [{"type": "field", "network": "tcp,udp", "outboundTag": "proxy"}]}
+  }
+]
