@@ -2,6 +2,7 @@ import typer
 from rich.table import Table
 
 from app.cli_ui import (
+    confirm_prompt,
     console,
     print_error,
     print_header,
@@ -406,7 +407,7 @@ def run_interactive_menu() -> None:
             break
         if choice == "1":
             _do_settings_show()
-            if typer.confirm("Изменить API token панели?", default=False):
+            if confirm_prompt("Изменить API token панели?", default=False):
                 token = typer.prompt("API token", hide_input=True).strip()
                 if token:
                     _repo().set_setting(PANEL_API_TOKEN_KEY, token)
