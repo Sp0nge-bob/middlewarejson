@@ -5,6 +5,8 @@ from rich.table import Table
 
 from app.country_flags import (
     COMMON_COUNTRY_FLAGS,
+    CUSTOM_FLAG_MENU_KEY,
+    OTHER_FLAG_CHOICE,
     apply_flag_prefix,
     country_code_to_flag,
     extract_country_code,
@@ -225,6 +227,11 @@ def prompt_happ_remarks(*, default: str = "Balance", current: str | None = None)
         flag = country_code_to_flag(code) or ""
         mark = " [dim](текущий)[/dim]" if code == default_flag_code else ""
         console.print(f"  {index}. {flag} {code} — {label}{mark}")
+    console.print(
+        f"  {CUSTOM_FLAG_MENU_KEY}. Другой код "
+        "(любые 2 буквы ISO: ch, se, kz, br…)"
+    )
+    print_info("Можно сразу ввести код (например ch), не только номер из списка")
 
     flag_default = "0"
     if default_flag_code:
@@ -235,9 +242,10 @@ def prompt_happ_remarks(*, default: str = "Balance", current: str | None = None)
         else:
             flag_default = default_flag_code.lower()
 
+    country_code: str | None = None
     while True:
         flag_choice = typer.prompt(
-            f"Флаг (номер, код nl/us или 0 — без), {CANCEL_HINT}",
+            f"Флаг (номер, код ch/se или {CUSTOM_FLAG_MENU_KEY} — другой), {CANCEL_HINT}",
             default=flag_default,
         ).strip()
         if is_exit_choice(flag_choice):
@@ -246,9 +254,28 @@ def prompt_happ_remarks(*, default: str = "Balance", current: str | None = None)
 
         resolved = resolve_flag_choice(flag_choice)
         if resolved is None:
-            print_warning("Неверный выбор флага")
+            print_warning("Неверный выбор — номер, 2-буквенный код или +")
             continue
-        country_code = None if resolved is True else resolved
+        if resolved is True:
+            country_code = None
+            break
+        if resolved is OTHER_FLAG_CHOICE:
+            while True:
+                custom_code = typer.prompt(
+                    f"Код страны (2 буквы, например ch), {CANCEL_HINT}",
+                ).strip()
+                if is_exit_choice(custom_code):
+                    print_cancelled()
+                    return None
+                custom_resolved = resolve_flag_choice(custom_code)
+                if isinstance(custom_resolved, str):
+                    country_code = custom_resolved
+                    preview = country_code_to_flag(custom_resolved) or ""
+                    print_info(f"Выбран флаг: {preview} {custom_resolved}")
+                    break
+                print_warning("Нужен код из 2 латинских букв (ISO 3166-1)")
+            break
+        country_code = resolved
         break
 
     name = typer.prompt("Название", default=default_name).strip()

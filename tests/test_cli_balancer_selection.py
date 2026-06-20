@@ -59,6 +59,24 @@ def test_prompt_client_sub_id_exact_sub_id(monkeypatch) -> None:
     assert _prompt_client_sub_id(clients) == "uzhp1975wixbxwj1"
 
 
+def test_prompt_happ_remarks_custom_flag_code(monkeypatch) -> None:
+    prompts = iter(["ch", "Swiss Pool"])
+    monkeypatch.setattr(
+        "app.cli_balancer.typer.prompt",
+        lambda *_a, **_k: next(prompts),
+    )
+    assert prompt_happ_remarks(default="Balance") == "🇨🇭 Swiss Pool"
+
+
+def test_prompt_happ_remarks_other_menu_flag(monkeypatch) -> None:
+    prompts = iter(["+", "br", "Brazil"])
+    monkeypatch.setattr(
+        "app.cli_balancer.typer.prompt",
+        lambda *_a, **_k: next(prompts),
+    )
+    assert prompt_happ_remarks(default="Balance") == "🇧🇷 Brazil"
+
+
 def test_prompt_happ_remarks_with_flag(monkeypatch) -> None:
     prompts = iter(["1", "NL Pool"])
     monkeypatch.setattr(

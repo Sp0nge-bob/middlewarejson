@@ -1,4 +1,5 @@
 from app.country_flags import (
+    OTHER_FLAG_CHOICE,
     apply_flag_prefix,
     country_code_to_flag,
     extract_country_code,
@@ -26,4 +27,12 @@ def test_resolve_flag_choice() -> None:
     assert resolve_flag_choice("0") is True
     assert resolve_flag_choice("1") == "NL"
     assert resolve_flag_choice("us") == "US"
+    assert resolve_flag_choice("ch") == "CH"
+    assert resolve_flag_choice("+") is OTHER_FLAG_CHOICE
+    assert resolve_flag_choice("другой") is OTHER_FLAG_CHOICE
     assert resolve_flag_choice("zzz") is None
+
+
+def test_any_iso_code_produces_flag() -> None:
+    assert country_code_to_flag("kz") == "🇰🇿"
+    assert apply_flag_prefix("Asia Pool", "kz") == "🇰🇿 Asia Pool"

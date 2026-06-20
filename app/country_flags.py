@@ -7,6 +7,16 @@ import re
 _REGIONAL_BASE = 0x1F1E6
 _FLAG_PREFIX_RE = re.compile(r"^[\U0001F1E6-\U0001F1FF]{2}\s*")
 
+CUSTOM_FLAG_MENU_KEY = "+"
+
+
+class OtherFlagChoice:
+    """Маркер: пользователь хочет ввести код страны вручную."""
+
+
+OTHER_FLAG_CHOICE = OtherFlagChoice()
+
+
 COMMON_COUNTRY_FLAGS: list[tuple[str, str]] = [
     ("NL", "Нидерланды"),
     ("US", "США"),
@@ -63,11 +73,20 @@ def apply_flag_prefix(name: str, country_code: str | None) -> str:
     return f"{flag} {base}" if base else flag
 
 
-def resolve_flag_choice(choice: str) -> str | None | bool:
-    """Разобрать выбор флага. True — без флага, str — код страны, None — неверный ввод."""
+def resolve_flag_choice(
+    choice: str,
+) -> str | None | bool | OtherFlagChoice:
+    """Разобрать выбор флага.
+
+    True — без флага, str — код страны, OTHER_FLAG_CHOICE — ввести код вручную,
+    None — неверный ввод.
+    """
     value = choice.strip()
     if not value or value == "0":
         return True
+
+    if value.casefold() in {CUSTOM_FLAG_MENU_KEY, "другой", "other", "*"}:
+        return OTHER_FLAG_CHOICE
 
     try:
         index = int(value) - 1
