@@ -20,8 +20,9 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# Local DB
+# Local DB and user config
 data/
+config/rules.yaml
 
 # Cursor / Grok local tooling
 mcps/

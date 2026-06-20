@@ -29,4 +29,4 @@ def test_parse_domain_url() -> None:
 
 def test_parse_invalid_raises() -> None:
     with pytest.raises(ValueError):
-        parse_subscription_reference("not-a-valid-reference")
+        parse_subscription_reference("bad!")

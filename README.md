@@ -1,72 +1,140 @@
 # middlewarejson
 
-Middleware between VPN clients and a 3x-ui panel. Proxies JSON subscriptions (`/json/{sub_id}`), preserves upstream headers, and applies configurable transforms.
+Middleware между VPN-клиентами (HAPP и др.) и панелью **3x-ui**. Проксирует JSON-подписки (`/json/{sub_id}`), сохраняет заголовки upstream и применяет трансформации: балансировщики по группам клиентов, теги, фильтры.
 
-## Features
+**English:** JSON subscription proxy and transform layer for 3x-ui — passthrough or rules-based balancers per client group.
 
-- **Passthrough proxy** — transparent JSON relay
-- **Rules engine** — YAML-based transforms (balancers, filters, tagging)
-- **Panel API sync** — inbound catalog and client groups from 3x-ui
-- **Per-group balancers** — apply transforms by client group, not globally
+## Возможности
 
-## Quick start
+- **Прозрачный прокси** — relay JSON без изменений (`TRANSFORM_MODE=passthrough`)
+- **Балансировщики** — объединение нескольких инбаундов в один профиль HAPP по группе клиента
+- **Синхронизация с панелью** — каталог инбаундов и группы клиентов через Panel API (только GET)
+- **CLI** — интерактивное меню на русском: настройки, синхронизация, балансировщики, systemd
+- **Systemd** — установка и управление службой из CLI
+
+## Требования
+
+- Python 3.11+
+- Linux (для production и systemd; разработка возможна на Windows)
+- Панель 3x-ui с JSON-подписками и Panel API token
+
+## Быстрый старт
 
 ```bash
+git clone https://github.com/Sp0nge-bob/middlewarejson.git
+cd middlewarejson
+
 python3 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+
 cp .env.example .env
-# edit .env — upstream URL, panel token, paths
-uvicorn app.main:app --host 127.0.0.1 --port 8080
+# Отредактируйте .env — см. docs/CONFIGURATION.md
+
+python -m app.cli                  # интерактивное меню
 ```
 
-Health check: `curl -s http://127.0.0.1:8080/health`
-
-## Configuration
-
-Copy `.env.example` to `.env`. Required values depend on your setup:
-
-| Variable | Purpose |
-|---|---|
-| `UPSTREAM_BASE_URL` | 3x-ui subscription origin |
-| `UPSTREAM_JSON_PATH` | JSON subscription path (default `/json`) |
-| `PANEL_WEB_BASE_PATH` | Panel secret web path (from panel settings) |
-| `PANEL_API_TOKEN` | Bearer token for Panel API |
-| `TRANSFORM_MODE` | `passthrough` or `rules` |
-| `DB_PATH` | SQLite database for catalog and groups |
-
-Panel credentials can also be stored via CLI: `python -m app.cli settings set --panel-token <token>`
-
-## CLI
+Проверка агента:
 
 ```bash
-python -m app.cli                          # interactive menu
-python -m app.cli catalog sync             # sync inbounds from Panel API
-python -m app.cli group sync               # sync client groups
-python -m app.cli balancer create \
-  --name "Pool" --members 1,7              # panel inbound IDs
-python -m app.cli group assign \
-  --group premium --balancer pool
+curl -s http://127.0.0.1:8080/health
+# {"status":"ok"}
 ```
 
-Members accept panel inbound IDs (`1,7`) or fingerprints (`vless|host|...`).
+## Важно: upstream ≠ панель
 
-## Rules (optional)
+Частая ошибка — указать в `UPSTREAM_BASE_URL` URL **панели** вместо **sub-сервера** подписок.
+
+| Что | Порт / путь | Переменные |
+|-----|-------------|------------|
+| JSON-подписка (upstream) | Отдельный порт (часто `2096`), **без** web base path | `UPSTREAM_BASE_URL`, `UPSTREAM_JSON_PATH` |
+| Panel API | Порт панели + web base path | `PANEL_API_BASE_URL`, `PANEL_WEB_BASE_PATH`, `PANEL_API_TOKEN` |
+
+Скопируйте JSON URL из карточки клиента в 3x-ui и разбейте на base + path:
+
+```
+https://node1.example.com/json/abcd1234efgh5678
+  → UPSTREAM_BASE_URL=https://node1.example.com
+  → UPSTREAM_JSON_PATH=/json
+```
+
+Подробнее: [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+
+## Меню CLI
 
 ```bash
-cp config/rules.example.yaml config/rules.yaml
-# set TRANSFORM_MODE=rules in .env
+python -m app.cli
 ```
 
-## Deploy
+| # | Раздел | Действие |
+|---|--------|----------|
+| 1 | Настройки | Показать / изменить настройки панели |
+| 2 | Настройки | Показать настройки скрипта (.env) |
+| 3 | Настройки | Проверить подключение к Panel API |
+| 4 | Настройки | Состояние systemd-службы |
+| 5 | Настройки | Установить службу systemd |
+| 6–7 | Данные панели | Список инбаундов / групп |
+| 8 | Настройка JSON | Балансировщики |
+| 9 | Синхронизация | Каталог + группы клиентов |
+| 10 | Отладка | Запуск uvicorn вручную |
 
-See `deploy/nginx.conf.example` and `deploy/middlewarejson.service`. Update paths and ports for your environment.
+Команды Typer (без меню):
 
 ```bash
-chmod +x deploy/update.sh
-./deploy/update.sh
+python -m app.cli settings show
+python -m app.cli catalog sync
+python -m app.cli group sync
+python -m app.cli service status
+python -m app.cli service install --start
+python -m app.cli balancer create --name "Pool" --members 1,7
 ```
 
-## Docs
+## Балансировщики
 
-Technical spec: [`docs/TZ.md`](docs/TZ.md).
+1. Установите `TRANSFORM_MODE=rules` в `.env`
+2. Синхронизируйте каталог (п. 9 в меню)
+3. Создайте балансировщик (п. 8) — выберите инбаунды, стратегию, область (группа / клиент)
+4. Перезапустите службу
+
+Балансировщики хранятся в SQLite (`data/middleware.db`). Правила YAML (`config/rules.yaml`) — опционально для тегирования; скопируйте из `config/rules.example.yaml`.
+
+## Деплой
+
+Production-развёртывание (nginx, systemd, обновление):
+
+- [docs/DEPLOY.md](docs/DEPLOY.md)
+
+Кратко:
+
+```bash
+chmod 600 .env
+python -m app.cli          # п. 5 — установить systemd
+# nginx: см. deploy/nginx.conf.example
+```
+
+## Документация
+
+| Файл | Содержание |
+|------|------------|
+| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Все переменные `.env`, приоритеты, troubleshooting |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | VPS, nginx, systemd, обновление |
+| [docs/TZ.md](docs/TZ.md) | Техническое задание |
+| [SECURITY.md](SECURITY.md) | Секреты, ротация токенов, отчёт об уязвимостях |
+
+## Безопасность
+
+- Файл `.env` **не коммитится** — см. `.env.example`
+- Токен панели маскируется в CLI (`abcd...wxyz`)
+- После публикации репозитория **ротируйте** Panel API token в 3x-ui
+- `chmod 600 .env` на сервере
+
+## Разработка
+
+```bash
+pip install -r requirements.txt
+pytest -q
+```
+
+## Лицензия
+
+MIT — см. [LICENSE](LICENSE).
