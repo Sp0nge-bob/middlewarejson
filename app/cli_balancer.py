@@ -19,11 +19,21 @@ console = Console()
 SCOPE_CHOICES = list(BALANCER_SCOPES.keys())
 
 
+_STRATEGY_HINTS = {
+    "roundRobin": "по очереди",
+    "leastLoad": "меньше нагрузка на сервере",
+    "leastPing": "минимальный пинг (ближайший по задержке)",
+    "random": "случайный выбор",
+}
+
+
 def prompt_strategy(default: str = "roundRobin") -> str:
     console.print("[bold]Стратегия[/bold]")
     for index, strategy in enumerate(BALANCER_STRATEGIES, start=1):
         mark = " (default)" if strategy == default else ""
-        console.print(f"  {index}. {strategy}{mark}")
+        hint = _STRATEGY_HINTS.get(strategy, "")
+        suffix = f" — {hint}" if hint else ""
+        console.print(f"  {index}. {strategy}{suffix}{mark}")
     choice = typer.prompt("Выбор", default="1").strip()
     try:
         selected = int(choice) - 1

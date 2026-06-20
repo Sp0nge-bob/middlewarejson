@@ -11,6 +11,7 @@ from app.services.transformer import SubscriptionTransformer
 _STRATEGY_MAP = {
     "roundRobin": "roundRobin",
     "leastLoad": "leastLoad",
+    "leastPing": "leastPing",
     "random": "random",
 }
 

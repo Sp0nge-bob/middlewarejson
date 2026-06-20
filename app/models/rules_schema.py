@@ -46,7 +46,7 @@ class BalancerMember(BaseModel):
 class BalancerRule(BaseModel):
     tag: str
     remarks: str = ""
-    strategy: Literal["roundRobin", "leastLoad", "random"] = "roundRobin"
+    strategy: Literal["roundRobin", "leastLoad", "leastPing", "random"] = "roundRobin"
     members: list[BalancerMember] = Field(default_factory=list)
 
 

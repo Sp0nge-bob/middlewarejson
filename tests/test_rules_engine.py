@@ -68,6 +68,25 @@ def test_balancer_members_can_use_inbound_ids() -> None:
     assert set(ws_config["routing"]["balancers"][0]["selector"]) == {nl_fp, us_fp}
 
 
+def test_least_ping_strategy_in_balancer_output() -> None:
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    rules_data = yaml.safe_load(RULES.read_text(encoding="utf-8"))
+    rules_data["balancers"] = [
+        {
+            "tag": "ping-pool",
+            "remarks": "Fastest",
+            "strategy": "leastPing",
+            "members": [{"tags": ["nl-ws", "us-ws"]}],
+        }
+    ]
+    rules_data["output"]["format"] = "grouped"
+
+    transformer = RulesTransformer(TransformRules.from_dict(rules_data))
+    result = transformer.transform(payload)
+    ping_config = next(item for item in result if item["remarks"] == "Fastest")
+    assert ping_config["routing"]["balancers"][0]["strategy"] == {"type": "leastPing"}
+
+
 def test_balancer_members_can_use_remarks_match() -> None:
     payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
     rules_data = yaml.safe_load(RULES.read_text(encoding="utf-8"))

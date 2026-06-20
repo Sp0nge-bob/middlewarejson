@@ -1,7 +1,7 @@
 from typing import Literal
 
 BalancerScope = Literal["disabled", "group", "all", "client"]
-BalancerStrategy = Literal["roundRobin", "leastLoad", "random"]
+BalancerStrategy = Literal["roundRobin", "leastLoad", "leastPing", "random"]
 
 BALANCER_SCOPES: dict[BalancerScope, str] = {
     "disabled": "Выключен",
@@ -10,7 +10,12 @@ BALANCER_SCOPES: dict[BalancerScope, str] = {
     "client": "Один клиент",
 }
 
-BALANCER_STRATEGIES: list[BalancerStrategy] = ["roundRobin", "leastLoad", "random"]
+BALANCER_STRATEGIES: list[BalancerStrategy] = [
+    "roundRobin",
+    "leastLoad",
+    "leastPing",
+    "random",
+]
 
 SCOPE_PRIORITY: dict[BalancerScope, int] = {
     "client": 3,
