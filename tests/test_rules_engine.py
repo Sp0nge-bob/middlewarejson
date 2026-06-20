@@ -1,19 +1,41 @@
+import copy
 import json
 from pathlib import Path
 
-import yaml
-
 from app.models.rules_schema import TransformRules
-from app.services.rules_loader import load_rules
 from app.transformers.rules_engine import RulesTransformer
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_nodes.json"
-RULES = Path(__file__).parent.parent / "config" / "rules.yaml"
+
+
+def _base_rules() -> dict:
+    return {
+        "output": {"format": "grouped"},
+        "filters": {"exclude": []},
+        "tagging": {
+            "rules": [
+                {"match": {"remarks_equals": ["NL-WS"]}, "tag": "nl-ws"},
+                {"match": {"remarks_equals": ["NL-XHTTP"]}, "tag": "nl-xhttp"},
+                {"match": {"remarks_equals": ["NL-GRPC"]}, "tag": "nl-grpc"},
+                {"match": {"remarks_equals": ["US-WS"]}, "tag": "us-ws"},
+                {"match": {"remarks_equals": ["US-GRPC"]}, "tag": "us-grpc"},
+            ],
+            "default_template": "node-{index}",
+        },
+        "balancers": [
+            {
+                "tag": "global-pool",
+                "remarks": "NL+USA Balance",
+                "strategy": "roundRobin",
+                "members": [{"tags": ["nl-ws", "us-ws"]}],
+            }
+        ],
+    }
 
 
 def test_global_balancer_nl_and_us_from_different_servers() -> None:
     payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
-    rules = load_rules(RULES)
+    rules = TransformRules.from_dict(_base_rules())
     result = RulesTransformer(rules).transform(payload)
 
     assert isinstance(result, list)
@@ -36,7 +58,7 @@ def test_global_balancer_nl_and_us_from_different_servers() -> None:
 
 def test_balancer_members_can_use_inbound_ids() -> None:
     payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
-    rules_data = yaml.safe_load(RULES.read_text(encoding="utf-8"))
+    rules_data = copy.deepcopy(_base_rules())
     rules_data["tagging"]["rules"] = []
     rules_data["balancers"] = [
         {
@@ -53,7 +75,6 @@ def test_balancer_members_can_use_inbound_ids() -> None:
             ],
         }
     ]
-    rules_data["output"]["format"] = "grouped"
 
     from app.models.nodes import configs_to_nodes
 
@@ -70,7 +91,7 @@ def test_balancer_members_can_use_inbound_ids() -> None:
 
 def test_balancer_incomplete_members_adds_failed_suffix() -> None:
     payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
-    rules_data = yaml.safe_load(RULES.read_text(encoding="utf-8"))
+    rules_data = copy.deepcopy(_base_rules())
     rules_data["tagging"]["rules"] = []
     rules_data["balancers"] = [
         {
@@ -87,7 +108,6 @@ def test_balancer_incomplete_members_adds_failed_suffix() -> None:
             ],
         }
     ]
-    rules_data["output"]["format"] = "grouped"
 
     from app.models.nodes import configs_to_nodes
 
@@ -107,7 +127,7 @@ def test_balancer_incomplete_members_adds_failed_suffix() -> None:
 
 def test_least_ping_strategy_in_balancer_output() -> None:
     payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
-    rules_data = yaml.safe_load(RULES.read_text(encoding="utf-8"))
+    rules_data = copy.deepcopy(_base_rules())
     rules_data["balancers"] = [
         {
             "tag": "ping-pool",
@@ -116,7 +136,6 @@ def test_least_ping_strategy_in_balancer_output() -> None:
             "members": [{"tags": ["nl-ws", "us-ws"]}],
         }
     ]
-    rules_data["output"]["format"] = "grouped"
 
     transformer = RulesTransformer(TransformRules.from_dict(rules_data))
     result = transformer.transform(payload)
@@ -126,7 +145,7 @@ def test_least_ping_strategy_in_balancer_output() -> None:
 
 def test_balancer_members_can_use_remarks_match() -> None:
     payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
-    rules_data = yaml.safe_load(RULES.read_text(encoding="utf-8"))
+    rules_data = copy.deepcopy(_base_rules())
     rules_data["balancers"] = [
         {
             "tag": "nl-pool",
@@ -135,7 +154,6 @@ def test_balancer_members_can_use_remarks_match() -> None:
             "members": [{"match": {"remarks_contains": ["NL-"]}}],
         }
     ]
-    rules_data["output"]["format"] = "grouped"
 
     transformer = RulesTransformer(TransformRules.from_dict(rules_data))
     result = transformer.transform(payload)

@@ -226,7 +226,6 @@ def _do_script_settings_show() -> None:
     print_field("URL агента", f"http://{settings.agent_host}:{settings.agent_port}")
     print_field("Путь подписки (агент)", f"{agent_path}/<sub_id>")
     print_field("Режим трансформации", settings.transform_mode)
-    print_field("Rules path", settings.rules_path)
     print_field("База данных", settings.db_path)
     print_field("Upstream", f"{upstream_base}{upstream_path}/<sub_id>")
     startup_sync = "да" if settings.panel_sync_on_startup else "нет"

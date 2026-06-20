@@ -40,10 +40,6 @@ class Settings(BaseSettings):
         default="passthrough",
         validation_alias="TRANSFORM_MODE",
     )
-    rules_path: str = Field(
-        default="config/rules.yaml",
-        validation_alias="RULES_PATH",
-    )
     db_path: str = Field(
         default="data/middleware.db",
         validation_alias="DB_PATH",

@@ -30,8 +30,7 @@
 
 | Переменная | По умолчанию | Описание |
 |------------|--------------|----------|
-| `TRANSFORM_MODE` | `passthrough` | `passthrough` — без изменений; `rules` — балансировщики и rules engine |
-| `RULES_PATH` | `config/rules.yaml` | Путь к YAML-правилам (теги, фильтры) |
+| `TRANSFORM_MODE` | `passthrough` | `passthrough` — без изменений; `rules` — балансировщики из SQLite |
 | `DB_PATH` | `data/middleware.db` | SQLite: каталог, группы, балансировщики |
 
 ### Panel API (3x-ui)

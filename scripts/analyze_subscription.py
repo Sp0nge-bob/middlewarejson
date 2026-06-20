@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Анализ JSON-подписки 3x-ui: уникальные поля для rules.yaml."""
+"""Анализ JSON-подписки 3x-ui: уникальные поля для сопоставления инбаундов."""
 import json
 import sys
 from pathlib import Path

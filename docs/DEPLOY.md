@@ -23,12 +23,7 @@ chmod 600 .env
 mkdir -p data
 ```
 
-Для балансировщиков:
-
-```bash
-cp config/rules.example.yaml config/rules.yaml
-# TRANSFORM_MODE=rules в .env
-```
+Установите `TRANSFORM_MODE=rules` в `.env`, если нужны балансировщики.
 
 ## 2. Первичная настройка через CLI
 

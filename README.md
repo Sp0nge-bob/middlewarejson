@@ -96,7 +96,7 @@ python -m app.cli balancer create --name "Pool" --members 1,7
 3. Создайте балансировщик (п. 8) — выберите инбаунды, стратегию, область (группа / клиент)
 4. Перезапустите службу
 
-Балансировщики хранятся в SQLite (`data/middleware.db`). Правила YAML (`config/rules.yaml`) — опционально для тегирования; скопируйте из `config/rules.example.yaml`.
+Балансировщики и привязки к группам хранятся в SQLite (`data/middleware.db`).
 
 ## Деплой
 
