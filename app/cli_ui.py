@@ -25,7 +25,7 @@ def _decode_bytes(data: bytes) -> str:
         return ""
 
     candidates: list[str] = []
-    for encoding in (sys.stdin.encoding, locale.getpreferredencoding(False), "utf-8", "cp1251"):
+    for encoding in ("utf-8", sys.stdin.encoding, locale.getpreferredencoding(False), "cp1251"):
         if encoding and encoding not in candidates:
             candidates.append(encoding)
     candidates.append("latin-1")

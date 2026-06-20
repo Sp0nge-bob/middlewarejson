@@ -4,7 +4,7 @@ from app.cli_balancer import (
     filter_clients,
     prompt_happ_remarks,
 )
-from app.services.profile_builder import default_balancer_tag, normalize_balancer_tag
+from app.services.profile_builder import default_balancer_tag
 from app.db.repository import ClientRecord
 
 
@@ -12,15 +12,8 @@ def _client(email: str, *, sub_id: str = "sub1", group: str = "G1") -> ClientRec
     return ClientRecord(sub_id=sub_id, group_name=group, email=email, enable=True)
 
 
-def test_normalize_balancer_tag_uses_custom_value() -> None:
-    assert normalize_balancer_tag("nearest") == "nearest"
-    assert normalize_balancer_tag("My Pool") == "my-pool"
-
-
-def test_normalize_balancer_tag_falls_back_to_remarks() -> None:
-    assert normalize_balancer_tag("", fallback_remarks="NL Pool") == default_balancer_tag(
-        "NL Pool"
-    )
+def test_default_balancer_tag_from_cyrillic_name() -> None:
+    assert default_balancer_tag("Авто-подбор") == "авто-подбор"
 
 
 def test_prompt_member_indices_exit_cancels(monkeypatch) -> None:

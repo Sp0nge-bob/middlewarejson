@@ -40,7 +40,7 @@ from app.models.balancer import (
     normalize_scope,
     normalize_strategy,
 )
-from app.services.profile_builder import default_balancer_tag, normalize_balancer_tag
+from app.services.profile_builder import default_balancer_tag
 
 SCOPE_CHOICES = list(BALANCER_SCOPES.keys())
 MAX_CLIENT_RESULTS = 20
@@ -171,24 +171,19 @@ def prompt_balancer_tag(
     repo: CatalogRepository,
     remarks: str,
 ) -> str | None:
-    default_tag = default_balancer_tag(remarks)
-    print_info(
-        "Идентификатор — внутренний ключ (routing). "
-        "Название в HAPP может быть другим."
-    )
+    default_tag = default_balancer_tag(strip_leading_flag(remarks))
     while True:
         raw = text_prompt("Идентификатор", default=default_tag).strip()
         if is_exit_choice(raw):
             print_cancelled()
             return None
-        tag = normalize_balancer_tag(raw, fallback_remarks=remarks)
-        if not tag:
+        if not raw:
             print_warning("Идентификатор не может быть пустым")
             continue
-        if repo.get_balancer_by_tag(tag) is not None:
-            print_warning(f"Идентификатор «{tag}» уже занят — выберите другой")
+        if repo.get_balancer_by_tag(raw) is not None:
+            print_warning(f"Идентификатор «{raw}» уже занят — выберите другой")
             continue
-        return tag
+        return raw
 
 
 def prompt_hide_members(*, default: bool = True) -> bool:

@@ -17,6 +17,12 @@ def test_confirm_prompt_empty_uses_default(monkeypatch) -> None:
     assert confirm_prompt("Test?", default=True) is True
 
 
+def test_decode_bytes_prefers_utf8_over_cp1251() -> None:
+    from app.cli_ui import _decode_bytes
+
+    assert _decode_bytes("Авто-подбор".encode("utf-8")) == "Авто-подбор"
+
+
 def test_text_prompt_preserves_cyrillic(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.cli_ui._decode_stdin_line",
