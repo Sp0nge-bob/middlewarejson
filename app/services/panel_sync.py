@@ -4,8 +4,7 @@ import asyncio
 import logging
 import re
 import threading
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import timedelta
 
 from app.config import Settings
 from app.db.database import Database
@@ -20,39 +19,31 @@ from app.services.panel_api import (
 logger = logging.getLogger(__name__)
 
 _SYNC_LOCK = threading.Lock()
-_TIME_PATTERN = re.compile(r"^(\d{1,2}):(\d{2})$")
+_INTERVAL_PATTERN = re.compile(r"^(\d+)([hdm])$", re.IGNORECASE)
+_MIN_SYNC_INTERVAL = timedelta(minutes=5)
 
 
-def parse_sync_time(value: str) -> tuple[int, int] | None:
-    raw = value.strip()
+def parse_sync_interval(value: str) -> timedelta | None:
+    raw = value.strip().lower()
     if not raw:
         return None
-    match = _TIME_PATTERN.match(raw)
+
+    match = _INTERVAL_PATTERN.fullmatch(raw)
     if not match:
-        raise ValueError(f"invalid sync time '{value}', expected HH:MM")
-    hour = int(match.group(1))
-    minute = int(match.group(2))
-    if hour > 23 or minute > 59:
-        raise ValueError(f"invalid sync time '{value}', expected HH:MM")
-    return hour, minute
+        raise ValueError(
+            f"invalid sync interval '{value}', expected format like 30m, 12h, 24h, 7d"
+        )
 
+    amount = int(match.group(1))
+    if amount <= 0:
+        raise ValueError(f"invalid sync interval '{value}', amount must be positive")
 
-def resolve_sync_timezone(name: str) -> ZoneInfo:
-    raw = name.strip()
-    if not raw:
-        return ZoneInfo("localtime")
-    return ZoneInfo(raw)
-
-
-def next_sync_at(
-    now: datetime,
-    hour: int,
-    minute: int,
-) -> datetime:
-    candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-    if candidate <= now:
-        candidate += timedelta(days=1)
-    return candidate
+    unit = match.group(2).lower()
+    if unit == "m":
+        return timedelta(minutes=amount)
+    if unit == "h":
+        return timedelta(hours=amount)
+    return timedelta(days=amount)
 
 
 def run_panel_sync(settings: Settings, *, reason: str) -> bool:
@@ -92,32 +83,28 @@ async def run_panel_sync_async(settings: Settings, *, reason: str) -> bool:
 
 
 async def panel_sync_scheduler(settings: Settings) -> None:
-    parsed = parse_sync_time(settings.panel_sync_at)
-    if parsed is None:
-        return
-    hour, minute = parsed
-
     try:
-        tz = resolve_sync_timezone(settings.panel_sync_timezone)
-    except Exception as exc:
-        logger.error("panel sync scheduler disabled: invalid timezone: %s", exc)
+        interval = parse_sync_interval(settings.panel_sync_interval)
+    except ValueError as exc:
+        logger.error("panel sync scheduler disabled: %s", exc)
+        return
+
+    if interval is None:
+        return
+    if interval < _MIN_SYNC_INTERVAL:
+        logger.error(
+            "panel sync scheduler disabled: interval %s is below minimum %s",
+            settings.panel_sync_interval.strip(),
+            _MIN_SYNC_INTERVAL,
+        )
         return
 
     logger.info(
-        "panel sync scheduler started: daily at %02d:%02d (%s)",
-        hour,
-        minute,
-        tz.key if hasattr(tz, "key") else settings.panel_sync_timezone or "localtime",
+        "panel sync scheduler started: every %s (%.0f sec)",
+        settings.panel_sync_interval.strip(),
+        interval.total_seconds(),
     )
 
     while True:
-        now = datetime.now(tz)
-        target = next_sync_at(now, hour, minute)
-        delay_sec = max(1.0, (target - now).total_seconds())
-        logger.info(
-            "panel sync next run at %s (in %.0f sec)",
-            target.isoformat(timespec="minutes"),
-            delay_sec,
-        )
-        await asyncio.sleep(delay_sec)
+        await asyncio.sleep(interval.total_seconds())
         await run_panel_sync_async(settings, reason="schedule")

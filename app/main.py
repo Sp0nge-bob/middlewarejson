@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
         await run_panel_sync_async(settings, reason="startup")
 
     scheduler_task: asyncio.Task[None] | None = None
-    if settings.panel_sync_at.strip():
+    if settings.panel_sync_interval.strip():
         scheduler_task = asyncio.create_task(panel_sync_scheduler(settings))
 
     yield

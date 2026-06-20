@@ -203,9 +203,9 @@ def _do_settings_show() -> None:
     mode = settings.transform_mode.strip().lower()
     print_field("Режим трансформации", settings.transform_mode)
     startup_sync = "да" if settings.panel_sync_on_startup else "нет"
-    schedule = settings.panel_sync_at.strip() or "выкл"
+    interval = settings.panel_sync_interval.strip() or "выкл"
     print_field("Синхр. при старте", startup_sync)
-    print_field("Синхр. по расписанию", schedule)
+    print_field("Синхр. интервал", interval)
     if balancers and mode != "rules":
         print_warning(
             "Балансировщики не применяются в подписке. "

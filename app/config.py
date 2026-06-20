@@ -64,13 +64,9 @@ class Settings(BaseSettings):
         default=True,
         validation_alias="PANEL_SYNC_ON_STARTUP",
     )
-    panel_sync_at: str = Field(
-        default="04:00",
-        validation_alias="PANEL_SYNC_AT",
-    )
-    panel_sync_timezone: str = Field(
-        default="",
-        validation_alias="PANEL_SYNC_TZ",
+    panel_sync_interval: str = Field(
+        default="24h",
+        validation_alias="PANEL_SYNC_INTERVAL",
     )
 
     def resolved_panel_base_url(self) -> str:
