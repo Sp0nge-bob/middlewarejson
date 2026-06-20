@@ -50,3 +50,10 @@ def build_balancer_rules(
 
 def default_balancer_tag(name: str) -> str:
     return _slugify_tag(name)
+
+
+def normalize_balancer_tag(raw: str, *, fallback_remarks: str = "") -> str:
+    value = raw.strip()
+    if not value:
+        return default_balancer_tag(fallback_remarks) if fallback_remarks else "balancer"
+    return _slugify_tag(value)

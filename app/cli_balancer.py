@@ -40,7 +40,7 @@ from app.models.balancer import (
     normalize_scope,
     normalize_strategy,
 )
-from app.services.profile_builder import default_balancer_tag
+from app.services.profile_builder import default_balancer_tag, normalize_balancer_tag
 
 SCOPE_CHOICES = list(BALANCER_SCOPES.keys())
 MAX_CLIENT_RESULTS = 20
@@ -165,6 +165,30 @@ def prompt_strategy(default: str = "roundRobin") -> str:
         return normalize_strategy(choice)
     except ValueError:
         return default
+
+
+def prompt_balancer_tag(
+    repo: CatalogRepository,
+    remarks: str,
+) -> str | None:
+    default_tag = default_balancer_tag(remarks)
+    print_info(
+        "Идентификатор — внутренний ключ (routing). "
+        "Название в HAPP может быть другим."
+    )
+    while True:
+        raw = text_prompt("Идентификатор", default=default_tag).strip()
+        if is_exit_choice(raw):
+            print_cancelled()
+            return None
+        tag = normalize_balancer_tag(raw, fallback_remarks=remarks)
+        if not tag:
+            print_warning("Идентификатор не может быть пустым")
+            continue
+        if repo.get_balancer_by_tag(tag) is not None:
+            print_warning(f"Идентификатор «{tag}» уже занят — выберите другой")
+            continue
+        return tag
 
 
 def prompt_hide_members(*, default: bool = True) -> bool:
@@ -440,29 +464,32 @@ def create_balancer_interactive(
     list_inbounds,
     resolve_member_fingerprints,
 ) -> None:
-    print_step(1, 5, "Состав инбаундов")
+    print_step(1, 6, "Состав инбаундов")
     rows = list_inbounds(active_only=True, for_selection=True)
     fingerprints = _prompt_member_indices(rows)
     if not fingerprints:
         return
 
-    print_step(2, 5, "Название в HAPP")
+    print_step(2, 6, "Название в HAPP")
     name = prompt_happ_remarks(default="Balance")
     if name is None:
         return
-    tag = default_balancer_tag(name)
-    print_info(f"Идентификатор будет: {tag}")
 
-    print_step(3, 5, "Стратегия балансировки")
+    print_step(3, 6, "Идентификатор")
+    tag = prompt_balancer_tag(repo, name)
+    if tag is None:
+        return
+
+    print_step(4, 6, "Стратегия балансировки")
     strategy = prompt_strategy()
 
-    print_step(4, 5, "Область применения")
+    print_step(5, 6, "Область применения")
     scope_result = prompt_scope(repo)
     if scope_result is None:
         return
     scope, scope_target = scope_result
 
-    print_step(5, 5, "Видимость серверов в подписке")
+    print_step(6, 6, "Видимость серверов в подписке")
     hide_members = prompt_hide_members(default=True)
 
     repo.create_balancer(
