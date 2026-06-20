@@ -19,7 +19,7 @@ from app.cli_ui import (
     print_warning,
     prompt_line,
 )
-from app.db.repository import CatalogRepository
+from app.db.repository import CatalogRepository, ClientRecord
 from app.models.balancer import (
     BALANCER_SCOPES,
     BALANCER_STRATEGIES,
@@ -32,6 +32,107 @@ from app.models.balancer import (
 from app.services.profile_builder import default_balancer_tag
 
 SCOPE_CHOICES = list(BALANCER_SCOPES.keys())
+MAX_CLIENT_RESULTS = 20
+MIN_CLIENT_SEARCH_LEN = 2
+
+
+def _client_display_label(client: ClientRecord) -> str:
+    label = client.email or client.sub_id
+    group_hint = f" [{client.group_name}]" if client.group_name else ""
+    return f"{label}{group_hint}  sub_id={client.sub_id}"
+
+
+def filter_clients(clients: list[ClientRecord], query: str) -> list[ClientRecord]:
+    needle = query.strip().casefold()
+    if not needle:
+        return clients
+
+    by_group = [client for client in clients if client.group_name.casefold() == needle]
+    if by_group:
+        return by_group
+
+    matches: list[ClientRecord] = []
+    for client in clients:
+        if needle in client.email.casefold() or needle in client.sub_id.casefold():
+            matches.append(client)
+    return matches
+
+
+def _find_client_by_sub_id(
+    clients: list[ClientRecord],
+    sub_id: str,
+) -> ClientRecord | None:
+    value = sub_id.strip()
+    if not value:
+        return None
+    for client in clients:
+        if client.sub_id == value:
+            return client
+    return None
+
+
+def _prompt_client_sub_id(clients: list[ClientRecord]) -> str | None:
+    total = len(clients)
+    print_info(
+        f"Клиентов в базе: {total}. "
+        f"Введите часть имени, email или sub_id (от {MIN_CLIENT_SEARCH_LEN} символов), "
+        f"или sub_id целиком."
+    )
+
+    while True:
+        query = typer.prompt(f"Поиск, {CANCEL_HINT}", default="").strip()
+        if is_exit_choice(query):
+            print_cancelled()
+            return None
+
+        exact = _find_client_by_sub_id(clients, query)
+        if exact is not None:
+            console.print(f"  {_client_display_label(exact)}")
+            if confirm_prompt("Выбрать этого клиента?", default=True):
+                return exact.sub_id
+            continue
+
+        if len(query) < MIN_CLIENT_SEARCH_LEN:
+            print_warning(
+                f"Слишком короткий запрос — минимум {MIN_CLIENT_SEARCH_LEN} символа "
+                "или полный sub_id"
+            )
+            continue
+
+        matches = filter_clients(clients, query)
+        if not matches:
+            print_warning("Ничего не найдено — уточните запрос")
+            continue
+
+        if len(matches) == 1:
+            client = matches[0]
+            console.print(f"  {_client_display_label(client)}")
+            if confirm_prompt("Выбрать этого клиента?", default=True):
+                return client.sub_id
+            continue
+
+        shown = matches[:MAX_CLIENT_RESULTS]
+        if len(matches) > MAX_CLIENT_RESULTS:
+            print_info(
+                f"Найдено {len(matches)}, показаны первые {MAX_CLIENT_RESULTS}. "
+                "Уточните поиск."
+            )
+        else:
+            print_info(f"Найдено {len(matches)}")
+
+        console.print("[bold]Выберите клиента[/bold]")
+        for index, client in enumerate(shown):
+            console.print(f"  {index}. {_client_display_label(client)}")
+
+        choice = typer.prompt(f"Номер клиента, {CANCEL_HINT}").strip()
+        if is_exit_choice(choice):
+            print_cancelled()
+            return None
+        try:
+            return shown[int(choice)].sub_id
+        except (ValueError, IndexError):
+            print_error("Неверный номер")
+            continue
 
 
 def prompt_strategy(default: str = "roundRobin") -> str:
@@ -97,23 +198,10 @@ def prompt_scope(repo: CatalogRepository) -> tuple[str, str] | None:
         if not clients:
             print_warning("Клиентов нет. Сначала выполните синхронизацию (п. 6 в меню).")
             return "disabled", ""
-        console.print("[bold]Выберите клиента[/bold]")
-        for index, client in enumerate(clients):
-            label = client.email or client.sub_id
-            group_hint = f" [{client.group_name}]" if client.group_name else ""
-            console.print(f"  {index}. {label}{group_hint}  sub_id={client.sub_id}")
-        client_choice = typer.prompt(f"Номер клиента, {CANCEL_HINT}").strip()
-        if is_exit_choice(client_choice):
-            print_cancelled()
+        sub_id = _prompt_client_sub_id(clients)
+        if sub_id is None:
             return None
-        try:
-            return "client", clients[int(client_choice)].sub_id
-        except (ValueError, IndexError):
-            sub_id = typer.prompt(f"sub_id, {CANCEL_HINT}").strip()
-            if is_exit_choice(sub_id):
-                print_cancelled()
-                return None
-            return "client", sub_id
+        return "client", sub_id
 
     return scope, ""
 
