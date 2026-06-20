@@ -15,6 +15,8 @@ _STRATEGY_MAP = {
     "random": "random",
 }
 
+_OBSERVATORY_STRATEGIES = frozenset({"leastPing", "leastLoad"})
+
 _FAILED_SUFFIX = " - Failed"
 
 
@@ -167,6 +169,16 @@ def _system_outbounds(template_config: dict[str, Any]) -> list[dict[str, Any]]:
     return system
 
 
+def _attach_observatory(config: dict[str, Any], selector: list[str]) -> None:
+    """leastPing/leastLoad в Xray требуют observatory — иначе core не стартует."""
+    config["observatory"] = {
+        "subjectSelector": selector,
+        "probeUrl": "https://www.google.com/generate_204",
+        "probeInterval": "30s",
+        "enableConcurrency": True,
+    }
+
+
 def _build_balancer_config(
     template_config: dict[str, Any],
     nodes: list[ProxyNode],
@@ -181,11 +193,12 @@ def _build_balancer_config(
 
     routing: dict[str, Any] = {}
     selector = [node.tag for node in nodes]
+    strategy_type = _STRATEGY_MAP.get(balancer.strategy, "roundRobin")
     routing["balancers"] = [
         {
             "tag": balancer.tag,
             "selector": selector,
-            "strategy": {"type": _STRATEGY_MAP.get(balancer.strategy, "roundRobin")},
+            "strategy": {"type": strategy_type},
         }
     ]
     routing["domainStrategy"] = "AsIs"
@@ -197,6 +210,8 @@ def _build_balancer_config(
         }
     ]
     config["routing"] = routing
+    if balancer.strategy in _OBSERVATORY_STRATEGIES:
+        _attach_observatory(config, selector)
     return config
 
 
@@ -265,17 +280,25 @@ def _build_single_merged_config(
     config["remarks"] = rules.output.remarks
 
     balancers_json: list[dict[str, Any]] = []
+    observatory_selector: list[str] = []
+    needs_observatory = False
     for balancer in rules.balancers:
         selector = _resolve_balancer_members(balancer, nodes)
         if not selector:
             continue
+        strategy_type = _STRATEGY_MAP.get(balancer.strategy, "roundRobin")
         balancers_json.append(
             {
                 "tag": balancer.tag,
                 "selector": selector,
-                "strategy": {"type": _STRATEGY_MAP.get(balancer.strategy, "roundRobin")},
+                "strategy": {"type": strategy_type},
             }
         )
+        if balancer.strategy in _OBSERVATORY_STRATEGIES:
+            needs_observatory = True
+            for tag in selector:
+                if tag not in observatory_selector:
+                    observatory_selector.append(tag)
 
     default_balancer = rules.output.default_balancer or (
         balancers_json[0]["tag"] if balancers_json else ""
@@ -286,6 +309,8 @@ def _build_single_merged_config(
             {"type": "field", "network": "tcp,udp", "balancerTag": default_balancer}
         ]
     config["routing"] = routing
+    if needs_observatory and observatory_selector:
+        _attach_observatory(config, observatory_selector)
     return config
 
 

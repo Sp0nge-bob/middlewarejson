@@ -141,6 +141,8 @@ def test_least_ping_strategy_in_balancer_output() -> None:
     result = transformer.transform(payload)
     ping_config = next(item for item in result if item["remarks"] == "Fastest")
     assert ping_config["routing"]["balancers"][0]["strategy"] == {"type": "leastPing"}
+    assert ping_config["observatory"]["subjectSelector"] == ["nl-ws", "us-ws"]
+    assert ping_config["observatory"]["probeUrl"] == "https://www.google.com/generate_204"
 
 
 def test_balancer_hide_members_false_keeps_standalone_profiles() -> None:
