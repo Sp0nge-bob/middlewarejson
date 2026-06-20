@@ -32,13 +32,13 @@ class UpstreamError(Exception):
 
 
 class UpstreamClient:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, *, base_url: str | None = None) -> None:
         self._settings = settings
+        self._base_url = (base_url or settings.upstream_base_url).rstrip("/")
 
     def build_url(self, sub_id: str) -> str:
-        base = self._settings.upstream_base_url.rstrip("/")
         path = self._settings.upstream_json_path.rstrip("/")
-        return f"{base}{path}/{sub_id}"
+        return f"{self._base_url}{path}/{sub_id}"
 
     async def fetch(
         self,
@@ -66,10 +66,15 @@ class UpstreamClient:
             ) as client:
                 response = await client.get(url, headers=headers)
         except httpx.TimeoutException as exc:
-            logger.warning("upstream timeout for sub_id=%s: %s", sub_id, exc)
+            logger.warning("upstream timeout for sub_id=%s url=%s: %s", sub_id, url, exc)
             raise UpstreamError("upstream timeout") from exc
         except httpx.RequestError as exc:
-            logger.warning("upstream request error for sub_id=%s: %s", sub_id, exc)
+            logger.warning(
+                "upstream request error for sub_id=%s url=%s: %s",
+                sub_id,
+                url,
+                exc,
+            )
             raise UpstreamError("upstream unavailable") from exc
 
         passthrough_headers = {

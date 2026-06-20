@@ -45,6 +45,16 @@ def resolve_panel_base_url(
     return settings.upstream_base_url.rstrip("/")
 
 
+def resolve_upstream_base_url(
+    settings: Settings,
+    repository_panel_url: str | None = None,
+) -> str:
+    explicit = settings.upstream_base_url.strip()
+    if explicit:
+        return explicit.rstrip("/")
+    return resolve_panel_base_url(settings, repository_panel_url)
+
+
 def parse_group_names(groups: list[Any]) -> list[str]:
     names: list[str] = []
     for item in groups:

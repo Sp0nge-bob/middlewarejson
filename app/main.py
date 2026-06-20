@@ -9,6 +9,7 @@ from app.db.database import Database
 from app.db.repository import CatalogRepository
 from app.routes.subscription import router
 from app.services.factory import build_transform_service
+from app.services.panel_api import PANEL_API_BASE_URL_KEY, resolve_upstream_base_url
 from app.services.panel_sync import panel_sync_scheduler, run_panel_sync_async
 
 logging.basicConfig(
@@ -23,7 +24,13 @@ def _log_transform_readiness() -> None:
     mode = settings.transform_mode.strip().lower()
     repo = CatalogRepository(Database(settings.db_path))
     balancer_count = len(repo.list_balancers())
+    upstream_base = resolve_upstream_base_url(
+        settings,
+        repo.get_setting(PANEL_API_BASE_URL_KEY),
+    )
+    upstream_path = settings.upstream_json_path.rstrip("/")
     logger.info("TRANSFORM_MODE=%s, balancers in db=%s", settings.transform_mode, balancer_count)
+    logger.info("upstream target: %s%s/<sub_id>", upstream_base, upstream_path)
     if balancer_count and mode != "rules":
         logger.warning(
             "Балансировщики в базе есть, но TRANSFORM_MODE=%s — "
