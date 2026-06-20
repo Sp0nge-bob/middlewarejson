@@ -59,7 +59,9 @@ def test_sync_clients_via_groups_and_emails(
 
     result = sync_clients(settings, repo)
     assert result["groups"] == 2
+    assert result["groups_with_clients"] == 2
     assert result["upserted"] == 2
+    assert repo.list_groups() == ["basic", "premium"]
 
     assert repo.get_group_for_sub_id("client_a_sub_id12") == "premium"
     assert repo.get_group_for_sub_id("client_b_sub_id12") == "basic"

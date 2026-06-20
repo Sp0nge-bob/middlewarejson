@@ -376,9 +376,11 @@ def _do_group_sync() -> None:
         console.print(f"[red]sync failed: {exc}[/red]")
         return
 
-    console.print(
-        f"[green]Synced {result['upserted']} clients "
-        f"({result['groups']} groups, removed={result['removed']})[/green]"
+    print_success(
+        f"Клиенты: {result['upserted']} "
+        f"(групп в панели {result['groups']}, "
+        f"с клиентами {result['groups_with_clients']}, "
+        f"удалено={result['removed']})"
     )
 
 
@@ -486,8 +488,10 @@ def _do_sync_all() -> None:
         return
 
     print_success(
-        f"Клиенты: {clients_result['upserted']} записей "
-        f"({clients_result['groups']} групп, удалено={clients_result['removed']})"
+        f"Клиенты: {clients_result['upserted']} "
+        f"(групп в панели {clients_result['groups']}, "
+        f"с клиентами {clients_result['groups_with_clients']}, "
+        f"удалено={clients_result['removed']})"
     )
 
 

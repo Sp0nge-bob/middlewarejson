@@ -103,27 +103,32 @@ def collect_clients_from_groups(panel_client: PanelApiClient) -> tuple[list[Clie
             seen_sub_ids.add(record.sub_id)
             clients.append(record)
 
-    return clients, len(group_names)
+    return clients, group_names
 
 
 def sync_clients(settings: Settings, repository: CatalogRepository) -> dict[str, int]:
     try:
         panel_client = _make_panel_client(settings, repository)
-        clients, groups_count = collect_clients_from_groups(panel_client)
+        clients, group_names = collect_clients_from_groups(panel_client)
+        groups_count = len(group_names)
     except PanelApiError as exc:
         raise ValueError(str(exc)) from exc
 
+    repository.upsert_panel_groups(group_names)
     upserted, removed = repository.upsert_clients(clients)
+    groups_with_clients = len({client.group_name for client in clients if client.group_name})
 
     logger.info(
-        "client sync complete: groups=%s clients=%s upserted=%s removed=%s",
+        "client sync complete: groups=%s groups_with_clients=%s clients=%s upserted=%s removed=%s",
         groups_count,
+        groups_with_clients,
         len(clients),
         upserted,
         removed,
     )
     return {
         "groups": groups_count,
+        "groups_with_clients": groups_with_clients,
         "panel_clients": len(clients),
         "upserted": upserted,
         "removed": removed,

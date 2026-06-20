@@ -76,6 +76,25 @@ class Database:
                 """
             )
 
+        if "panel_groups" not in tables:
+            conn.execute(
+                """
+                CREATE TABLE panel_groups (
+                    group_name TEXT PRIMARY KEY,
+                    last_seen_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )
+                """
+            )
+            if "client_index" in tables:
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO panel_groups (group_name)
+                    SELECT DISTINCT group_name
+                    FROM client_index
+                    WHERE group_name != ''
+                    """
+                )
+
         if "balancers" in tables:
             balancer_columns = {
                 row[1] for row in conn.execute("PRAGMA table_info(balancers)").fetchall()

@@ -402,13 +402,39 @@ class CatalogRepository:
             for row in rows
         ]
 
+    def upsert_panel_groups(self, group_names: list[str]) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        seen = {name.strip() for name in group_names if name.strip()}
+
+        with self._db.connect() as conn:
+            for group_name in sorted(seen):
+                conn.execute(
+                    """
+                    INSERT INTO panel_groups (group_name, last_seen_at)
+                    VALUES (?, ?)
+                    ON CONFLICT(group_name) DO UPDATE SET
+                        last_seen_at = excluded.last_seen_at
+                    """,
+                    (group_name, now),
+                )
+
+            if seen:
+                placeholders = ",".join("?" for _ in seen)
+                conn.execute(
+                    f"DELETE FROM panel_groups WHERE group_name NOT IN ({placeholders})",
+                    tuple(seen),
+                )
+            else:
+                conn.execute("DELETE FROM panel_groups")
+
+            conn.commit()
+
     def list_groups(self) -> list[str]:
         with self._db.connect() as conn:
             rows = conn.execute(
                 """
-                SELECT DISTINCT group_name
-                FROM client_index
-                WHERE group_name != ''
+                SELECT group_name
+                FROM panel_groups
                 ORDER BY group_name
                 """
             ).fetchall()

@@ -46,6 +46,11 @@ CREATE TABLE IF NOT EXISTS client_index (
 
 CREATE INDEX IF NOT EXISTS idx_client_group ON client_index(group_name);
 
+CREATE TABLE IF NOT EXISTS panel_groups (
+    group_name TEXT PRIMARY KEY,
+    last_seen_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS group_balancers (
     group_name TEXT PRIMARY KEY,
     balancer_tag TEXT NOT NULL REFERENCES balancers(tag) ON DELETE CASCADE

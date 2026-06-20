@@ -67,12 +67,13 @@ def run_panel_sync(settings: Settings, *, reason: str) -> bool:
 
     logger.info(
         "panel sync ok (%s): catalog_active=%s catalog_upserted=%s "
-        "clients=%s groups=%s removed=%s",
+        "clients=%s groups=%s groups_with_clients=%s removed=%s",
         reason,
         catalog_result["total_active"],
         catalog_result["upserted"],
         clients_result["upserted"],
         clients_result["groups"],
+        clients_result["groups_with_clients"],
         clients_result["removed"],
     )
     return True
