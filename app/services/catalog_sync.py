@@ -6,9 +6,12 @@ from app.db.repository import CatalogRepository
 from app.models.inbound import InboundDescriptor
 from app.models.panel_inbound import panel_inbounds_to_descriptors
 from app.services.panel_api import (
+    PANEL_API_BASE_URL_KEY,
+    PANEL_API_TOKEN_KEY,
     PANEL_WEB_BASE_PATH_KEY,
     PanelApiClient,
     PanelApiError,
+    resolve_panel_base_url,
     resolve_panel_token,
     resolve_panel_web_base_path,
 )
@@ -26,12 +29,21 @@ def configs_to_inbounds(configs: list[dict[str, Any]]) -> list[InboundDescriptor
 
 
 def fetch_panel_inbounds_sync(settings: Settings, repository: CatalogRepository) -> list[dict[str, Any]]:
-    token = resolve_panel_token(settings, repository.get_setting("panel_api_token"))
+    token = resolve_panel_token(settings, repository.get_setting(PANEL_API_TOKEN_KEY))
     web_path = resolve_panel_web_base_path(
         settings,
         repository.get_setting(PANEL_WEB_BASE_PATH_KEY),
     )
-    client = PanelApiClient(settings, token, web_base_path=web_path)
+    base_url = resolve_panel_base_url(
+        settings,
+        repository.get_setting(PANEL_API_BASE_URL_KEY),
+    )
+    client = PanelApiClient(
+        settings,
+        token,
+        web_base_path=web_path,
+        api_base_url=base_url,
+    )
     return client.fetch_inbounds_list()
 
 

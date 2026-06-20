@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 PANEL_API_TOKEN_KEY = "panel_api_token"
 PANEL_WEB_BASE_PATH_KEY = "panel_web_base_path"
+PANEL_API_BASE_URL_KEY = "panel_api_base_url"
 
 
 def resolve_panel_token(settings: Settings, repository_token: str | None) -> str:
@@ -31,6 +32,17 @@ def resolve_panel_web_base_path(
     if repository_value:
         return repository_value.strip()
     return ""
+
+
+def resolve_panel_base_url(
+    settings: Settings,
+    repository_value: str | None,
+) -> str:
+    if settings.panel_api_base_url:
+        return settings.panel_api_base_url.strip().rstrip("/")
+    if repository_value:
+        return repository_value.strip().rstrip("/")
+    return settings.upstream_base_url.rstrip("/")
 
 
 def parse_group_names(groups: list[Any]) -> list[str]:
@@ -92,10 +104,12 @@ class PanelApiClient:
         token: str,
         *,
         web_base_path: str | None = None,
+        api_base_url: str | None = None,
     ) -> None:
         self._settings = settings
         self._token = token.strip()
         self._web_path = (web_base_path or settings.panel_web_base_path).strip("/")
+        self._api_base_url = (api_base_url or "").strip().rstrip("/")
         if not self._token:
             raise PanelApiError(
                 "Panel API token is not set. "
@@ -103,7 +117,7 @@ class PanelApiClient:
             )
 
     def _base_url(self) -> str:
-        base = self._settings.resolved_panel_base_url()
+        base = self._api_base_url or self._settings.resolved_panel_base_url()
         web_path = self._web_path
         if web_path:
             return f"{base}/{web_path}/"

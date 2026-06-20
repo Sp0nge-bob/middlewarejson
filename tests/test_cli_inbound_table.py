@@ -1,4 +1,4 @@
-from app.cli import _format_endpoint
+from app.cli import _display_remarks, _format_endpoint
 
 
 def test_format_endpoint_address_and_port() -> None:
@@ -14,3 +14,7 @@ def test_format_endpoint_port_only() -> None:
 def test_format_endpoint_empty() -> None:
     row = {"address": "", "port": 0}
     assert _format_endpoint(row) == "—"
+
+
+def test_display_remarks_strips_flag_emoji() -> None:
+    assert _display_remarks("🇳🇱websocket") == "websocket"

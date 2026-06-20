@@ -4,11 +4,14 @@ from typing import Any
 from app.config import Settings
 from app.db.repository import CatalogRepository, ClientRecord
 from app.services.panel_api import (
+    PANEL_API_BASE_URL_KEY,
+    PANEL_API_TOKEN_KEY,
     PANEL_WEB_BASE_PATH_KEY,
     PanelApiClient,
     PanelApiError,
     parse_group_members,
     parse_group_names,
+    resolve_panel_base_url,
     resolve_panel_token,
     resolve_panel_web_base_path,
 )
@@ -17,12 +20,21 @@ logger = logging.getLogger(__name__)
 
 
 def _make_panel_client(settings: Settings, repository: CatalogRepository) -> PanelApiClient:
-    token = resolve_panel_token(settings, repository.get_setting("panel_api_token"))
+    token = resolve_panel_token(settings, repository.get_setting(PANEL_API_TOKEN_KEY))
     web_path = resolve_panel_web_base_path(
         settings,
         repository.get_setting(PANEL_WEB_BASE_PATH_KEY),
     )
-    return PanelApiClient(settings, token, web_base_path=web_path)
+    base_url = resolve_panel_base_url(
+        settings,
+        repository.get_setting(PANEL_API_BASE_URL_KEY),
+    )
+    return PanelApiClient(
+        settings,
+        token,
+        web_base_path=web_path,
+        api_base_url=base_url,
+    )
 
 
 def _build_email_lookup(clients: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:

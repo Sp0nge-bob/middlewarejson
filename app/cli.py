@@ -1,3 +1,5 @@
+import re
+
 import typer
 from rich import box
 from rich.table import Table
@@ -8,11 +10,12 @@ from app.cli_ui import (
     print_error,
     print_field,
     print_header,
+    print_info,
     print_menu_item,
-
     print_section,
     print_success,
     print_warning,
+    prompt_line,
 )
 from app.config import settings
 from app.db.database import Database
@@ -20,10 +23,12 @@ from app.db.repository import CatalogRepository
 from app.services.catalog_sync import sync_catalog
 from app.services.client_sync import sync_clients
 from app.services.panel_api import (
+    PANEL_API_BASE_URL_KEY,
     PANEL_API_TOKEN_KEY,
     PANEL_WEB_BASE_PATH_KEY,
     PanelApiClient,
     PanelApiError,
+    resolve_panel_base_url,
     resolve_panel_token,
     resolve_panel_web_base_path,
 )
@@ -93,6 +98,13 @@ def _resolve_member_fingerprints(
     return unique
 
 
+def _display_remarks(value: str, *, max_len: int = 20) -> str:
+    cleaned = re.sub(r"[\U0001F1E6-\U0001F1FF]{2}\s*", "", value).strip()
+    if len(cleaned) > max_len:
+        return cleaned[: max_len - 1] + "…"
+    return cleaned
+
+
 def _format_endpoint(row: dict[str, object]) -> str:
     address = str(row.get("address") or "").strip()
     port = int(row.get("port") or 0)
@@ -105,20 +117,25 @@ def _format_endpoint(row: dict[str, object]) -> str:
     return "—"
 
 
-def _print_inbound_table(rows: list[dict[str, object]]) -> None:
+def _print_inbound_table(
+    rows: list[dict[str, object]],
+    *,
+    for_selection: bool = False,
+) -> None:
     active_count = sum(1 for row in rows if row["is_active"])
     table = Table(
         title="Каталог инбаундов",
         box=box.SIMPLE_HEAD,
         show_footer=True,
         footer_style="dim",
+        pad_edge=False,
     )
-    table.add_column("#", style="dim", width=3, justify="right")
+    table.add_column("#", style="bold", width=3, justify="right")
     table.add_column("ID", style="cyan", width=4, justify="right")
-    table.add_column("Статус", width=6)
-    table.add_column("Название", min_width=14, max_width=22, overflow="ellipsis", no_wrap=True)
+    table.add_column("Статус", width=6, no_wrap=True)
+    table.add_column("Название", width=20, overflow="ellipsis", no_wrap=True)
     table.add_column("Прот.", width=8, overflow="ellipsis", no_wrap=True)
-    table.add_column("Эндпоинт", min_width=18, max_width=30, overflow="ellipsis", no_wrap=True)
+    table.add_column("Эндпоинт", width=32, overflow="ellipsis", no_wrap=True)
     table.add_column("Сеть", width=8, overflow="ellipsis", no_wrap=True)
 
     for index, row in enumerate(rows):
@@ -130,7 +147,7 @@ def _print_inbound_table(rows: list[dict[str, object]]) -> None:
             str(index),
             str(panel_id) if panel_id is not None else "—",
             status,
-            str(row["remarks"]),
+            _display_remarks(str(row["remarks"])),
             str(row["protocol"]),
             _format_endpoint(row),
             network,
@@ -144,25 +161,94 @@ def _print_inbound_table(rows: list[dict[str, object]]) -> None:
     table.columns[5].footer = f"активных {active_count}"
     table.columns[6].footer = ""
     console.print(table)
+    if for_selection:
+        print_info("Выбирайте номера из колонки # (0, 1, 2…), не ID из панели")
 
 
-def _do_settings_show() -> None:
-    repo = _repo()
-    token = resolve_panel_token(settings, repo.get_setting(PANEL_API_TOKEN_KEY))
-    balancers = repo.list_balancers()
-    assignments = repo.list_group_assignments()
+def _resolved_panel_settings(repo: CatalogRepository) -> tuple[str, str, str]:
+    base_url = resolve_panel_base_url(
+        settings,
+        repo.get_setting(PANEL_API_BASE_URL_KEY),
+    )
     web_path = resolve_panel_web_base_path(
         settings,
         repo.get_setting(PANEL_WEB_BASE_PATH_KEY),
     )
+    token = resolve_panel_token(settings, repo.get_setting(PANEL_API_TOKEN_KEY))
+    return base_url, web_path, token
+
+
+def _print_env_override_hints() -> None:
+    if settings.panel_api_base_url:
+        print_warning("URL панели задан в .env — имеет приоритет над базой")
+    if settings.panel_web_base_path:
+        print_warning("Web base path задан в .env — имеет приоритет над базой")
+    if settings.panel_api_token:
+        print_warning("API token задан в .env — имеет приоритет над базой")
+
+
+def _do_settings_show() -> None:
+    repo = _repo()
+    base_url, web_path, token = _resolved_panel_settings(repo)
+    balancers = repo.list_balancers()
+    assignments = repo.list_group_assignments()
 
     console.print()
     print_field("База данных", settings.db_path)
-    print_field("URL панели", settings.resolved_panel_base_url())
+    print_field("URL панели", base_url or "—")
     print_field("Web base path", web_path or "—")
     print_field("API token", _mask_token(token))
     print_field("Балансировщиков", str(len(balancers)))
     print_field("Привязок к группам", str(len(assignments)))
+
+
+def _do_edit_panel_settings(repo: CatalogRepository) -> None:
+    while True:
+        base_url, web_path, token = _resolved_panel_settings(repo)
+        console.print()
+        print_field("URL панели", base_url or "—")
+        print_field("Web base path", web_path or "—")
+        print_field("API token", _mask_token(token))
+        _print_env_override_hints()
+
+        console.print()
+        print_menu_item(1, "Изменить URL панели")
+        print_menu_item(2, "Изменить web base path")
+        print_menu_item(3, "Изменить API token")
+        print_menu_item(0, "Назад")
+
+        choice = prompt_line("Выбор [0 — назад]")
+        if choice == "0" or not choice:
+            return
+
+        if choice == "1":
+            if settings.panel_api_base_url:
+                print_warning("Сначала уберите PANEL_API_BASE_URL из .env")
+                continue
+            new_url = typer.prompt("URL панели", default=base_url).strip()
+            if new_url:
+                repo.set_setting(PANEL_API_BASE_URL_KEY, new_url)
+                print_success("URL панели сохранён")
+        elif choice == "2":
+            if settings.panel_web_base_path:
+                print_warning("Сначала уберите PANEL_WEB_BASE_PATH из .env")
+                continue
+            new_path = typer.prompt(
+                "Web base path панели",
+                default=web_path,
+            ).strip()
+            repo.set_setting(PANEL_WEB_BASE_PATH_KEY, new_path)
+            print_success("Web base path сохранён")
+        elif choice == "3":
+            if settings.panel_api_token:
+                print_warning("Сначала уберите PANEL_API_TOKEN из .env")
+                continue
+            new_token = typer.prompt("API token", hide_input=True).strip()
+            if new_token:
+                repo.set_setting(PANEL_API_TOKEN_KEY, new_token)
+                print_success("API token сохранён")
+        else:
+            print_warning("Неизвестный пункт")
 
 
 def _prompt_panel_settings(repo: CatalogRepository) -> bool:
@@ -217,11 +303,13 @@ def _do_panel_test() -> None:
     if not token:
         return
 
-    web_path = resolve_panel_web_base_path(
+    base_url, web_path, _ = _resolved_panel_settings(repo)
+    result = PanelApiClient(
         settings,
-        repo.get_setting(PANEL_WEB_BASE_PATH_KEY),
-    )
-    result = PanelApiClient(settings, token, web_base_path=web_path).probe_connection()
+        token,
+        web_base_path=web_path,
+        api_base_url=base_url,
+    ).probe_connection()
 
     console.print()
     print_field("Запрос", f"{result.method} {result.url}")
@@ -252,13 +340,17 @@ def _do_catalog_sync() -> None:
     )
 
 
-def _do_catalog_list(active_only: bool = False) -> list[dict[str, object]]:
+def _do_catalog_list(
+    active_only: bool = False,
+    *,
+    for_selection: bool = False,
+) -> list[dict[str, object]]:
     repo = _repo()
     rows = repo.list_inbounds(active_only=active_only)
     if not rows:
-        console.print("[yellow]Catalog is empty. Use: catalog sync[/yellow]")
+        print_warning("Каталог пуст. Выполните синхронизацию (п. 6 в меню).")
         return []
-    _print_inbound_table(rows)
+    _print_inbound_table(rows, for_selection=for_selection)
     return rows
 
 
@@ -422,11 +514,8 @@ def run_interactive_menu() -> None:
             break
         if choice == "1":
             _do_settings_show()
-            if confirm_prompt("Изменить API token панели?", default=False):
-                token = typer.prompt("API token", hide_input=True).strip()
-                if token:
-                    _repo().set_setting(PANEL_API_TOKEN_KEY, token)
-                    print_success("Token сохранён")
+            if confirm_prompt("Изменить настройки панели?", default=False):
+                _do_edit_panel_settings(_repo())
         elif choice == "2":
             _do_panel_test()
         elif choice == "3":

@@ -103,7 +103,7 @@ def _prompt_member_indices(rows: list) -> list[str] | None:
         print_warning("Каталог инбаундов пуст. Сначала выполните синхронизацию.")
         return None
 
-    selection = typer.prompt("Номера строк (например 0,2,5)")
+    selection = typer.prompt("Номера из колонки # (например 0,2,5)")
     try:
         indices = [int(part.strip()) for part in selection.split(",") if part.strip()]
         return [str(rows[i]["fingerprint"]) for i in indices]
@@ -196,7 +196,7 @@ def configure_balancer_interactive(
             repo.update_balancer(balancer.tag, remarks=remarks)
             print_success(f"Название: {remarks}")
         elif choice == "4":
-            rows = list_inbounds(active_only=True)
+            rows = list_inbounds(active_only=True, for_selection=True)
             fingerprints = _prompt_member_indices(rows)
             if fingerprints is None:
                 continue
@@ -217,7 +217,7 @@ def create_balancer_interactive(
     resolve_member_fingerprints,
 ) -> None:
     print_step(1, 4, "Состав инбаундов")
-    rows = list_inbounds(active_only=True)
+    rows = list_inbounds(active_only=True, for_selection=True)
     fingerprints = _prompt_member_indices(rows)
     if not fingerprints:
         return
