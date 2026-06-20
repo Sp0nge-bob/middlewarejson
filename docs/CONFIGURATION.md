@@ -62,7 +62,7 @@ UPSTREAM_VERIFY_SSL=false
 
 # Агент за nginx
 AGENT_HOST=127.0.0.1
-AGENT_PORT=8085
+AGENT_PORT=8080
 
 TRANSFORM_MODE=rules
 DB_PATH=data/middleware.db

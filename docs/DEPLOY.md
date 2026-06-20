@@ -43,7 +43,7 @@ python -m app.cli
 2. **П. 3** — проверка Panel API
 3. **П. 9** — синхронизация каталога и групп
 4. **П. 8** — балансировщики (при `TRANSFORM_MODE=rules`)
-5. **П. 10** — ручной запуск для проверки (`curl http://127.0.0.1:8085/health`)
+5. **П. 10** — ручной запуск для проверки (`curl http://127.0.0.1:8080/health`)
 6. **П. 5** — установка systemd
 
 Или из командной строки:
@@ -71,7 +71,7 @@ CLI подскажет эту команду после установки.
 
 ```nginx
 location <AGENT_JSON_PATH>/ {
-    proxy_pass http://127.0.0.1:8085;   # AGENT_PORT из .env; путь = UPSTREAM_JSON_PATH
+    proxy_pass http://127.0.0.1:8080;   # порт = AGENT_PORT из .env (по умолчанию 8080)
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
