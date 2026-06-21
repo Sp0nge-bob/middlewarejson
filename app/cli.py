@@ -29,11 +29,14 @@ from app.services.panel_api import (
     PANEL_API_BASE_URL_KEY,
     PANEL_API_TOKEN_KEY,
     PANEL_WEB_BASE_PATH_KEY,
+    TRANSFORM_MODE_KEY,
     PanelApiClient,
     PanelApiError,
+    normalize_transform_mode,
     resolve_panel_base_url,
     resolve_panel_token,
     resolve_panel_web_base_path,
+    resolve_transform_mode,
     resolve_upstream_base_url,
 )
 from app.cli_balancer import (
@@ -214,6 +217,49 @@ def _do_panel_settings_show() -> None:
     _print_env_override_hints()
 
 
+def _transform_mode_label(mode: str) -> str:
+    if mode == "rules":
+        return "rules — балансировщики и трансформации"
+    return "passthrough — подписка без изменений"
+
+
+def _resolved_transform_mode(repo: CatalogRepository) -> str:
+    return resolve_transform_mode(settings, repo.get_setting(TRANSFORM_MODE_KEY))
+
+
+def _do_set_transform_mode(mode: str) -> None:
+    repo = _repo()
+    normalized = normalize_transform_mode(mode)
+    repo.set_setting(TRANSFORM_MODE_KEY, normalized)
+    print_success(f"Режим трансформации: {_transform_mode_label(normalized)}")
+    print_info("Действует сразу для запросов подписки (перезапуск не обязателен)")
+
+
+def _do_edit_transform_mode(repo: CatalogRepository) -> None:
+    current = _resolved_transform_mode(repo)
+    console.print()
+    print_field("Текущий режим", _transform_mode_label(current))
+    print_menu_item(1, "rules — балансировщики и трансформации")
+    print_menu_item(2, "passthrough — подписка без изменений")
+    print_menu_item(0, "Назад")
+
+    choice = prompt_line("Выбор [0 — назад]")
+    if choice == "0" or not choice:
+        return
+    if choice == "1":
+        target = "rules"
+    elif choice == "2":
+        target = "passthrough"
+    else:
+        print_warning("Неизвестный пункт")
+        return
+
+    if target == current:
+        print_info("Режим уже выбран")
+        return
+    _do_set_transform_mode(target)
+
+
 def _do_script_settings_show() -> None:
     repo = _repo()
     balancers = repo.list_balancers()
@@ -222,7 +268,8 @@ def _do_script_settings_show() -> None:
         repo.get_setting(PANEL_API_BASE_URL_KEY),
     )
     upstream_path = settings.upstream_json_path.rstrip("/")
-    mode = settings.transform_mode.strip().lower()
+    mode = _resolved_transform_mode(repo)
+    db_mode = repo.get_setting(TRANSFORM_MODE_KEY)
 
     console.print()
     print_field("Агент", f"{settings.agent_host}:{settings.agent_port}")
@@ -233,18 +280,22 @@ def _do_script_settings_show() -> None:
         print_field("AGENT_JSON_PATH", settings.agent_json_path.strip())
     elif agent_path != upstream_path:
         pass
-    print_field("Режим трансформации", settings.transform_mode)
+    print_field("Режим трансформации", _transform_mode_label(mode))
+    if db_mode:
+        print_field("Режим в базе", db_mode)
+    else:
+        print_field("Режим в базе", f"(из .env: {settings.transform_mode})")
     print_field("База данных", settings.db_path)
     print_field("Upstream", f"{upstream_base}{upstream_path}/<sub_id>")
     startup_sync = "да" if settings.panel_sync_on_startup else "нет"
     interval = settings.panel_sync_interval.strip() or "выкл"
     print_field("Синхр. при старте", startup_sync)
     print_field("Синхр. интервал", interval)
-    print_info("Параметры скрипта задаются в .env — после изменений перезапустите службу")
     if balancers and mode != "rules":
         print_warning(
             "Балансировщики не применяются в подписке. "
-            "Установите TRANSFORM_MODE=rules в .env и перезапустите сервер."
+            "Включите rules: пункт меню ниже или "
+            "`python -m app.cli settings transform-mode rules`"
         )
 
 
@@ -593,6 +644,8 @@ def run_interactive_menu() -> None:
                 _do_edit_panel_settings(_repo())
         elif choice == "2":
             _do_script_settings_show()
+            if confirm_prompt("Переключить режим трансформации?", default=False):
+                _do_edit_transform_mode(_repo())
         elif choice == "3":
             _do_panel_test()
         elif choice == "4":
@@ -643,6 +696,24 @@ def settings_show() -> None:
 def settings_script_show() -> None:
     """Показать настройки скрипта (агент, transform, upstream, sync)."""
     _do_script_settings_show()
+
+
+@settings_app.command("transform-mode")
+def settings_transform_mode(
+    mode: str = typer.Argument(
+        "",
+        help="rules или passthrough; без аргумента — интерактивный выбор",
+    ),
+) -> None:
+    """Переключить режим трансформации подписки (rules / passthrough)."""
+    if not mode:
+        _do_edit_transform_mode(_repo())
+        return
+    try:
+        _do_set_transform_mode(mode)
+    except ValueError as exc:
+        print_error(str(exc))
+        raise typer.Exit(1) from exc
 
 
 @settings_app.command("test")

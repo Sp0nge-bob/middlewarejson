@@ -13,6 +13,25 @@ logger = logging.getLogger(__name__)
 PANEL_API_TOKEN_KEY = "panel_api_token"
 PANEL_WEB_BASE_PATH_KEY = "panel_web_base_path"
 PANEL_API_BASE_URL_KEY = "panel_api_base_url"
+TRANSFORM_MODE_KEY = "transform_mode"
+
+VALID_TRANSFORM_MODES = frozenset({"rules", "passthrough"})
+
+
+def normalize_transform_mode(value: str) -> str:
+    mode = value.strip().lower()
+    if mode not in VALID_TRANSFORM_MODES:
+        raise ValueError(f"режим должен быть rules или passthrough, получено: {value!r}")
+    return mode
+
+
+def resolve_transform_mode(
+    settings: Settings,
+    repository_value: str | None,
+) -> str:
+    if repository_value and repository_value.strip():
+        return normalize_transform_mode(repository_value)
+    return normalize_transform_mode(settings.transform_mode)
 
 
 def resolve_panel_token(settings: Settings, repository_token: str | None) -> str:

@@ -4,6 +4,7 @@ from app.config import Settings
 from app.db.database import Database
 from app.db.repository import CatalogRepository
 from app.models.subscription import SubscriptionPayload
+from app.services.panel_api import TRANSFORM_MODE_KEY, resolve_transform_mode
 from app.services.profile_builder import build_balancer_rules
 from app.services.transformer import PassthroughTransformer
 from app.transformers.rules_engine import RulesTransformer
@@ -17,13 +18,19 @@ class TransformService:
         self._passthrough = PassthroughTransformer()
         self._repository = CatalogRepository(Database(settings.db_path))
 
+    def _resolved_mode(self) -> str:
+        return resolve_transform_mode(
+            self._settings,
+            self._repository.get_setting(TRANSFORM_MODE_KEY),
+        )
+
     def transform(self, sub_id: str, payload: SubscriptionPayload) -> SubscriptionPayload:
-        mode = self._settings.transform_mode.strip().lower()
+        mode = self._resolved_mode()
         if mode != "rules":
             logger.info(
                 "transform skipped for sub_id=%s: TRANSFORM_MODE=%s (need rules)",
                 sub_id,
-                self._settings.transform_mode,
+                mode,
             )
             return self._passthrough.transform(payload)
 

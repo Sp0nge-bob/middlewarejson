@@ -9,7 +9,12 @@ from app.db.database import Database
 from app.db.repository import CatalogRepository
 from app.routes.subscription import build_subscription_router
 from app.services.factory import build_transform_service
-from app.services.panel_api import PANEL_API_BASE_URL_KEY, resolve_upstream_base_url
+from app.services.panel_api import (
+    PANEL_API_BASE_URL_KEY,
+    TRANSFORM_MODE_KEY,
+    resolve_transform_mode,
+    resolve_upstream_base_url,
+)
 from app.services.panel_sync import panel_sync_scheduler, run_panel_sync_async
 
 logging.basicConfig(
@@ -21,15 +26,15 @@ logger = logging.getLogger(__name__)
 
 
 def _log_transform_readiness() -> None:
-    mode = settings.transform_mode.strip().lower()
     repo = CatalogRepository(Database(settings.db_path))
+    mode = resolve_transform_mode(settings, repo.get_setting(TRANSFORM_MODE_KEY))
     balancer_count = len(repo.list_balancers())
     upstream_base = resolve_upstream_base_url(
         settings,
         repo.get_setting(PANEL_API_BASE_URL_KEY),
     )
     upstream_path = settings.upstream_json_path.rstrip("/")
-    logger.info("TRANSFORM_MODE=%s, balancers in db=%s", settings.transform_mode, balancer_count)
+    logger.info("TRANSFORM_MODE=%s, balancers in db=%s", mode, balancer_count)
     logger.info("upstream target: %s%s/<sub_id>", upstream_base, upstream_path)
 
     web_path = settings.panel_web_base_path.strip().strip("/")
@@ -43,8 +48,8 @@ def _log_transform_readiness() -> None:
     if balancer_count and mode != "rules":
         logger.warning(
             "Балансировщики в базе есть, но TRANSFORM_MODE=%s — "
-            "в подписке они не применяются. Установите TRANSFORM_MODE=rules в .env",
-            settings.transform_mode,
+            "в подписке они не применяются. Включите rules: python -m app.cli settings transform-mode rules",
+            mode,
         )
 
 
