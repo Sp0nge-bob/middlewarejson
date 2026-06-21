@@ -134,41 +134,43 @@ def _print_inbound_table(
     table = Table(
         title="Каталог инбаундов",
         box=box.SIMPLE_HEAD,
-        show_footer=True,
-        footer_style="dim",
-        pad_edge=False,
+        show_footer=False,
+        pad_edge=True,
+        expand=False,
     )
-    table.add_column("#", style="bold", width=3, justify="right")
-    table.add_column("ID", style="cyan", width=4, justify="right")
-    table.add_column("Статус", width=6, no_wrap=True)
-    table.add_column("Название", width=20, overflow="ellipsis", no_wrap=True)
-    table.add_column("Прот.", width=8, overflow="ellipsis", no_wrap=True)
-    table.add_column("Эндпоинт", width=32, overflow="ellipsis", no_wrap=True)
-    table.add_column("Сеть", width=8, overflow="ellipsis", no_wrap=True)
+    table.add_column("#", style="bold", min_width=3, justify="right", no_wrap=True)
+    table.add_column("ID", style="cyan", min_width=4, justify="right", no_wrap=True)
+    table.add_column("Эп", style="dim", min_width=2, justify="right", no_wrap=True)
+    table.add_column("Статус", min_width=4, no_wrap=True)
+    table.add_column("Название", min_width=16, max_width=24, overflow="ellipsis", no_wrap=True)
+    table.add_column("Прот.", min_width=6, max_width=10, overflow="ellipsis", no_wrap=True)
+    table.add_column("Эндпоинт", min_width=20, max_width=36, overflow="ellipsis", no_wrap=True)
+    table.add_column("Сеть", min_width=6, max_width=10, overflow="ellipsis", no_wrap=True)
 
     for index, row in enumerate(rows):
         panel_id = row.get("panel_inbound_id")
+        endpoint_index = int(row.get("endpoint_index") or 0)
         network = str(row.get("network") or "—")
         is_active = bool(row["is_active"])
-        status = "[green]вкл[/green]" if is_active else "[dim]выкл[/dim]"
+        status = "вкл" if is_active else "выкл"
+        status_style = "green" if is_active else "dim"
         table.add_row(
             str(index),
             str(panel_id) if panel_id is not None else "—",
-            status,
+            str(endpoint_index),
+            f"[{status_style}]{status}[/{status_style}]",
             _display_remarks(str(row["remarks"])),
             str(row["protocol"]),
             _format_endpoint(row),
             network,
         )
 
-    table.columns[0].footer = ""
-    table.columns[1].footer = ""
-    table.columns[2].footer = ""
-    table.columns[3].footer = f"всего {len(rows)}"
-    table.columns[4].footer = ""
-    table.columns[5].footer = f"активных {active_count}"
-    table.columns[6].footer = ""
     console.print(table)
+    console.print(
+        f"[dim]записей: {len(rows)}"
+        + (f", активных: {active_count}" if active_count != len(rows) else "")
+        + "[/dim]"
+    )
     if for_selection:
         print_info(
             f"Выбирайте номера из колонки # (0, 1, 2…), не ID из панели. {CANCEL_HINT}"
@@ -384,12 +386,12 @@ def _do_catalog_sync() -> None:
     console.print(
         f"[green]Synced {result['total_active']} endpoints "
         f"from {result['panel_inbounds']} panel inbounds "
-        f"(upserted={result['upserted']}, deactivated={result['deactivated']})[/green]"
+        f"(upserted={result['upserted']}, removed={result['removed']})[/green]"
     )
 
 
 def _do_catalog_list(
-    active_only: bool = False,
+    active_only: bool = True,
     *,
     for_selection: bool = False,
 ) -> list[dict[str, object]]:
@@ -513,7 +515,7 @@ def _do_sync_all() -> None:
         f"Каталог: {catalog_result['total_active']} эндпоинтов "
         f"из {catalog_result['panel_inbounds']} инбаундов панели "
         f"(обновлено={catalog_result['upserted']}, "
-        f"деактивировано={catalog_result['deactivated']})"
+        f"удалено={catalog_result['removed']})"
     )
 
     console.print()
@@ -598,7 +600,7 @@ def run_interactive_menu() -> None:
         elif choice == "5":
             run_install_systemd()
         elif choice == "6":
-            _do_catalog_list(active_only=False)
+            _do_catalog_list()
         elif choice == "7":
             _do_group_list()
         elif choice == "8":
@@ -708,9 +710,13 @@ def catalog_sync_cmd() -> None:
 
 @catalog_app.command("list")
 def catalog_list(
-    active_only: bool = typer.Option(False, "--active-only"),
+    show_all: bool = typer.Option(
+        False,
+        "--all",
+        help="Показать устаревшие записи (не из текущей синхронизации)",
+    ),
 ) -> None:
-    _do_catalog_list(active_only=active_only)
+    _do_catalog_list(active_only=not show_all)
 
 
 @group_app.command("sync")

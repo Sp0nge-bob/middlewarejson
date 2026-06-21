@@ -54,17 +54,17 @@ def sync_catalog(settings: Settings, repository: CatalogRepository) -> dict[str,
         raise ValueError(str(exc)) from exc
 
     descriptors = panel_inbounds_to_descriptors(inbounds_raw)
-    upserted, deactivated = repository.upsert_inbounds(descriptors)
+    upserted, removed = repository.upsert_inbounds(descriptors)
 
     logger.info(
-        "catalog sync complete: panel_inbounds=%s upserted=%s deactivated=%s",
+        "catalog sync complete: panel_inbounds=%s upserted=%s removed=%s",
         len(inbounds_raw),
         upserted,
-        deactivated,
+        removed,
     )
     return {
         "panel_inbounds": len(inbounds_raw),
         "upserted": upserted,
-        "deactivated": deactivated,
+        "removed": removed,
         "total_active": len(descriptors),
     }

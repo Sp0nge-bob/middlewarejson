@@ -103,28 +103,29 @@ class CatalogRepository:
 
             if seen:
                 placeholders = ",".join("?" for _ in seen)
-                deactivated = conn.execute(
+                removed = conn.execute(
                     f"""
-                    UPDATE inbound_catalog
-                    SET is_active = 0
-                    WHERE fingerprint NOT IN ({placeholders}) AND is_active = 1
+                    DELETE FROM inbound_catalog
+                    WHERE fingerprint NOT IN ({placeholders})
                     """,
                     tuple(seen),
                 ).rowcount
             else:
-                deactivated = conn.execute(
-                    "UPDATE inbound_catalog SET is_active = 0 WHERE is_active = 1"
-                ).rowcount
+                removed = conn.execute("DELETE FROM inbound_catalog").rowcount
 
             conn.commit()
 
-        return upserted, deactivated
+        return upserted, removed
 
     def list_inbounds(self, *, active_only: bool = False) -> list[dict[str, object]]:
         query = "SELECT * FROM inbound_catalog"
         if active_only:
             query += " WHERE is_active = 1"
-        query += " ORDER BY remarks, panel_inbound_id, endpoint_index, fingerprint"
+        query += (
+            " ORDER BY "
+            "CASE WHEN panel_inbound_id IS NULL THEN 1 ELSE 0 END, "
+            "panel_inbound_id, endpoint_index, remarks, fingerprint"
+        )
 
         with self._db.connect() as conn:
             rows = conn.execute(query).fetchall()

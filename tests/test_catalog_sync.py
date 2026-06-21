@@ -50,12 +50,12 @@ def test_sync_upserts_and_deactivates(repo: CatalogRepository, monkeypatch: pyte
         "app.services.catalog_sync.fetch_panel_inbounds_sync",
         lambda _settings, _repo: reduced,
     )
-    sync_catalog(settings, repo)
+    result = sync_catalog(settings, repo)
     active = repo.list_inbounds(active_only=True)
     assert len(active) == 8
+    assert result["removed"] == 2
     all_rows = repo.list_inbounds(active_only=False)
-    assert len(all_rows) == 10
-    assert sum(1 for row in all_rows if not row["is_active"]) == 2
+    assert len(all_rows) == 8
 
 
 def test_get_fingerprints_by_panel_ids(repo: CatalogRepository, monkeypatch: pytest.MonkeyPatch) -> None:
