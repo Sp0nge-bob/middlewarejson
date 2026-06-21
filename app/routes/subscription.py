@@ -9,7 +9,6 @@ from app.db.repository import CatalogRepository
 from app.models.subscription import SubscriptionPayload, validate_payload, validate_sub_id
 from app.services.panel_api import PANEL_API_BASE_URL_KEY, resolve_upstream_base_url
 from app.services.upstream import UpstreamClient, UpstreamError
-from app.transformers.happ_sanitize import sanitize_for_happ
 
 logger = logging.getLogger(__name__)
 
@@ -63,8 +62,6 @@ def build_subscription_router(json_path: str) -> APIRouter:
             payload: SubscriptionPayload = json.loads(result.body)
             validate_payload(payload)
             transformed = request.app.state.transform_service.transform(sub_id, payload)
-            if settings.happ_sanitize:
-                transformed = sanitize_for_happ(transformed)
             body = _serialize_payload(transformed)
         except (json.JSONDecodeError, ValueError, TypeError) as exc:
             logger.warning("invalid upstream json for sub_id=%s: %s", sub_id, exc)

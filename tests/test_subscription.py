@@ -78,28 +78,3 @@ def test_passthrough_json_and_headers(client: TestClient) -> None:
     assert response.headers["profile-update-interval"] == "10"
     assert response.headers["content-type"].startswith("application/json")
     assert json.loads(response.text) == json.loads(SAMPLE_BODY)
-
-
-def test_sanitizes_hysteria_profiles_from_upstream(client: TestClient) -> None:
-    raw_fixture = Path(__file__).parent / "fixtures" / "raw_3xui_subscription.json"
-    mock_get = AsyncMock(
-        return_value=_mock_upstream_response(
-            status_code=200,
-            text=raw_fixture.read_text(encoding="utf-8"),
-        )
-    )
-    mock_client = AsyncMock()
-    mock_client.get = mock_get
-    mock_client.__aenter__.return_value = mock_client
-    mock_client.__aexit__.return_value = None
-
-    with patch("app.services.upstream.httpx.AsyncClient", return_value=mock_client):
-        response = client.get(f"{JSON_SUB_PATH}/abcd1234efgh5678")
-
-    assert response.status_code == 200
-    payload = json.loads(response.text)
-    remarks = [item["remarks"] for item in payload]
-    assert "hysteria-turn" not in remarks
-    hy = next(item for item in payload if item["remarks"] == "hysteria")
-    proxy = next(o for o in hy["outbounds"] if o.get("tag") == "proxy")
-    assert proxy["protocol"] == "hysteria2"

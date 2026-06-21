@@ -68,10 +68,6 @@ class Settings(BaseSettings):
         default="24h",
         validation_alias="PANEL_SYNC_INTERVAL",
     )
-    happ_sanitize: bool = Field(
-        default=True,
-        validation_alias="HAPP_SANITIZE",
-    )
 
     def resolved_agent_json_path(self) -> str:
         explicit = self.agent_json_path.strip()
