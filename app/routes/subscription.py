@@ -62,9 +62,9 @@ def build_subscription_router(json_path: str) -> APIRouter:
         try:
             payload: SubscriptionPayload = json.loads(result.body)
             validate_payload(payload)
-            if settings.happ_sanitize:
-                payload = sanitize_for_happ(payload)
             transformed = request.app.state.transform_service.transform(sub_id, payload)
+            if settings.happ_sanitize:
+                transformed = sanitize_for_happ(transformed)
             body = _serialize_payload(transformed)
         except (json.JSONDecodeError, ValueError, TypeError) as exc:
             logger.warning("invalid upstream json for sub_id=%s: %s", sub_id, exc)

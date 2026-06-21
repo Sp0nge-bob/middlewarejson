@@ -12,6 +12,7 @@ _LOOPBACK_ADDRESSES = frozenset({"127.0.0.1", "localhost", "::1"})
 _UNSUPPORTED_STREAM_KEYS = frozenset({"finalmask"})
 _SYSTEM_PROTOCOLS = frozenset({"freedom", "blackhole", "dns"})
 _PADDING_RANGE = re.compile(r"^\s*(\d+)\s*-\s*(\d+)\s*$")
+_HAPP_STRIP_KEYS = frozenset({"inbounds", "dns", "policy", "stats", "log"})
 
 
 def _as_config_list(payload: SubscriptionPayload) -> list[dict[str, Any]]:
@@ -167,6 +168,21 @@ def _clean_stream_settings(stream_settings: dict[str, Any]) -> dict[str, Any]:
     return stream
 
 
+def _clean_system_outbound(outbound: dict[str, Any]) -> dict[str, Any]:
+    cleaned = copy.deepcopy(outbound)
+    if cleaned.get("protocol") != "freedom":
+        return cleaned
+    settings = cleaned.get("settings")
+    if isinstance(settings, dict):
+        settings.pop("noises", None)
+    return cleaned
+
+
+def _strip_happ_boilerplate(config: dict[str, Any]) -> None:
+    for key in _HAPP_STRIP_KEYS:
+        config.pop(key, None)
+
+
 def _sanitize_outbound(outbound: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(outbound, dict):
         return None
@@ -209,14 +225,13 @@ def _sanitize_config(config: dict[str, Any]) -> dict[str, Any] | None:
             new_outbounds.append(converted)
             has_proxy = True
             continue
-        new_outbounds.append(copy.deepcopy(outbound))
+        new_outbounds.append(_clean_system_outbound(outbound))
 
     if not has_proxy:
         return None
 
     sanitized["outbounds"] = new_outbounds
-    if sanitized.get("stats") == {}:
-        sanitized.pop("stats", None)
+    _strip_happ_boilerplate(sanitized)
     return sanitized
 
 

@@ -18,7 +18,7 @@ def test_partial_balancer_members_mark_profile_failed(tmp_path: Path) -> None:
         tag="testbalance",
         remarks="TESTBALANCE",
         strategy="roundRobin",
-        member_fingerprints=[present_fp, missing_fp],
+        member_fingerprints=[missing_fp, "vless|also-missing.example.com|ws|/ws-path|443|tls|"],
         scope="client",
         scope_target="client_a_sub_id12",
     )

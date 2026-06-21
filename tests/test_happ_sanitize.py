@@ -55,6 +55,38 @@ def test_normalizes_xhttp_padding_range() -> None:
     assert "settings" not in proxy["streamSettings"]["tlsSettings"]
 
 
+def test_strips_3xui_boilerplate_for_happ() -> None:
+    payload = [
+        {
+            "remarks": "plain",
+            "inbounds": [{"port": 10808, "protocol": "mixed", "tag": "mixed"}],
+            "dns": {"servers": [{"address": "8.8.8.8"}]},
+            "policy": {"levels": {"8": {"connIdle": 300}}},
+            "stats": {},
+            "log": {"loglevel": "warning"},
+            "outbounds": [
+                {
+                    "protocol": "vless",
+                    "tag": "proxy",
+                    "streamSettings": {"network": "ws", "security": "tls"},
+                    "settings": {
+                        "address": "node1.example.com",
+                        "port": 443,
+                        "id": "11111111-1111-1111-1111-111111111111",
+                    },
+                }
+            ],
+        }
+    ]
+    result = sanitize_for_happ(payload)
+    config = result[0]
+    assert "inbounds" not in config
+    assert "dns" not in config
+    assert "policy" not in config
+    assert "stats" not in config
+    assert "log" not in config
+
+
 def test_strips_reality_mldsa_fields() -> None:
     payload = [
         {

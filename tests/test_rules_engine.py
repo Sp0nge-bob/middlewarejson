@@ -89,7 +89,7 @@ def test_balancer_members_can_use_inbound_ids() -> None:
     assert set(ws_config["routing"]["balancers"][0]["selector"]) == {nl_fp, us_fp}
 
 
-def test_balancer_incomplete_members_adds_failed_suffix() -> None:
+def test_balancer_partial_members_still_works_without_failed_suffix() -> None:
     payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
     rules_data = copy.deepcopy(_base_rules())
     rules_data["tagging"]["rules"] = []
@@ -119,10 +119,31 @@ def test_balancer_incomplete_members_adds_failed_suffix() -> None:
 
     transformer = RulesTransformer(TransformRules.from_dict(rules_data))
     result = transformer.transform(payload)
+    pool_config = next(item for item in result if item["remarks"] == "TESTBALANCE")
+    assert len(pool_config["routing"]["balancers"][0]["selector"]) == 1
+
+
+def test_balancer_no_members_adds_failed_suffix() -> None:
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    rules_data = copy.deepcopy(_base_rules())
+    rules_data["tagging"]["rules"] = []
+    rules_data["balancers"] = [
+        {
+            "tag": "mixed-pool",
+            "remarks": "TESTBALANCE",
+            "strategy": "roundRobin",
+            "members": [
+                {"inbound_ids": ["vless|missing.example.com|ws||443||"]},
+            ],
+        }
+    ]
+
+    transformer = RulesTransformer(TransformRules.from_dict(rules_data))
+    result = transformer.transform(payload)
     failed_config = next(
         item for item in result if item["remarks"] == "TESTBALANCE - Failed"
     )
-    assert len(failed_config["routing"]["balancers"][0]["selector"]) == 1
+    assert failed_config["routing"]["balancers"][0]["selector"] == []
 
 
 def test_least_ping_strategy_in_balancer_output() -> None:

@@ -21,6 +21,16 @@ def extract_transport_path(stream: dict[str, Any]) -> str:
     )
 
 
+def fingerprint_match_keys(fingerprint: str) -> set[str]:
+    """Aliases for matching catalog entries to subscription nodes."""
+    keys = {fingerprint}
+    if fingerprint.startswith("hysteria|"):
+        keys.add(f"hysteria2|{fingerprint[len('hysteria|'):]}")
+    elif fingerprint.startswith("hysteria2|"):
+        keys.add(f"hysteria|{fingerprint[len('hysteria2|'):]}")
+    return keys
+
+
 def compute_inbound_fingerprint(outbound: dict[str, Any]) -> str:
     protocol = str(outbound.get("protocol", ""))
     settings = outbound.get("settings", {})

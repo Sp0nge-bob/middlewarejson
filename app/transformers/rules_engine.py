@@ -1,7 +1,11 @@
 import copy
+import logging
 import re
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
+from app.models.inbound import fingerprint_match_keys
 from app.models.nodes import ProxyNode, configs_to_nodes
 from app.models.rules_schema import BalancerRule, TaggingRule, TransformRules
 from app.models.subscription import SubscriptionPayload
@@ -86,6 +90,17 @@ def _filter_nodes(rules: TransformRules, nodes: list[ProxyNode]) -> list[ProxyNo
     ]
 
 
+def _find_node_by_fingerprint(
+    inbound_id: str,
+    nodes_by_fingerprint: dict[str, ProxyNode],
+) -> ProxyNode | None:
+    for key in fingerprint_match_keys(inbound_id):
+        node = nodes_by_fingerprint.get(key)
+        if node is not None:
+            return node
+    return None
+
+
 def _resolve_balancer_members(balancer: BalancerRule, nodes: list[ProxyNode]) -> list[str]:
     tags: list[str] = []
     tag_set: set[str] = set()
@@ -95,7 +110,7 @@ def _resolve_balancer_members(balancer: BalancerRule, nodes: list[ProxyNode]) ->
 
     for member in balancer.members:
         for inbound_id in member.inbound_ids:
-            node = nodes_by_fingerprint.get(inbound_id)
+            node = _find_node_by_fingerprint(inbound_id, nodes_by_fingerprint)
             if node is not None and node.tag not in tag_set:
                 tags.append(node.tag)
                 tag_set.add(node.tag)
@@ -126,19 +141,36 @@ def _expected_balancer_fingerprints(balancer: BalancerRule) -> list[str]:
 
 
 def _balancer_members_incomplete(balancer: BalancerRule, nodes: list[ProxyNode]) -> bool:
+    return len(_resolve_balancer_members(balancer, nodes)) == 0
+
+
+def _log_balancer_resolution(balancer: BalancerRule, nodes: list[ProxyNode]) -> None:
     expected = _expected_balancer_fingerprints(balancer)
     if not expected:
-        return False
-
-    nodes_by_fingerprint = {
-        node.fingerprint: node for node in nodes if node.fingerprint
-    }
-    return any(fingerprint not in nodes_by_fingerprint for fingerprint in expected)
+        return
+    resolved = _resolve_balancer_members(balancer, nodes)
+    if resolved:
+        return
+    nodes_by_fingerprint = {node.fingerprint: node for node in nodes if node.fingerprint}
+    missing = [
+        fingerprint
+        for fingerprint in expected
+        if _find_node_by_fingerprint(fingerprint, nodes_by_fingerprint) is None
+    ]
+    available = sorted(nodes_by_fingerprint.keys())
+    logger.warning(
+        "balancer %s: 0/%s members matched for sub; missing=%s; available=%s",
+        balancer.tag,
+        len(expected),
+        missing,
+        available[:8],
+    )
 
 
 def _balancer_display_remarks(balancer: BalancerRule, all_nodes: list[ProxyNode]) -> str:
     remarks = balancer.remarks or balancer.tag
     if _balancer_members_incomplete(balancer, all_nodes):
+        _log_balancer_resolution(balancer, all_nodes)
         if not remarks.endswith(_FAILED_SUFFIX):
             remarks = f"{remarks}{_FAILED_SUFFIX}"
     return remarks
@@ -265,6 +297,20 @@ def _build_grouped_output(
 
         if not _node_hidden_as_standalone(node, rules, nodes):
             result.append(copy.deepcopy(config))
+
+    for balancer in rules.balancers:
+        if balancer.tag in emitted_balancers:
+            continue
+        if not _expected_balancer_fingerprints(balancer):
+            continue
+        if _resolve_balancer_members(balancer, nodes):
+            continue
+        template = configs[nodes[0].source_index] if nodes else configs[0]
+        result.insert(
+            0,
+            _build_balancer_config(template, [], balancer, all_nodes=nodes),
+        )
+        emitted_balancers.add(balancer.tag)
 
     return result
 
