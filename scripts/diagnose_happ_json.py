@@ -190,16 +190,31 @@ def _check_config(index: int, config: dict[str, Any]) -> list[dict[str, str]]:
                     }
                 )
             if stype_l in {"leastping", "leastload"}:
-                issues.append(
-                    {
-                        "severity": "high",
-                        "field": f"routing.balancers[{b_index}].strategy.type",
-                        "reason": (
-                            f"{stype} шлёт observatory-пробы через iOS TUN "
-                            "и глушит интернет (3x-ui sub balancer)"
-                        ),
-                    }
+                has_burst = "burstObservatory" in config or (
+                    isinstance(routing, dict) and "burstObservatory" in routing
                 )
+                has_obs = "observatory" in config or (
+                    isinstance(routing, dict) and "observatory" in routing
+                )
+                if has_burst or not has_obs:
+                    issues.append(
+                        {
+                            "severity": "high",
+                            "field": f"routing.balancers[{b_index}].strategy.type",
+                            "reason": (
+                                f"{stype} на iPhone нужен top-level observatory, "
+                                "не burstObservatory (Xray #3058, 3x-ui JSON sub)"
+                            ),
+                        }
+                    )
+                if not fallback:
+                    issues.append(
+                        {
+                            "severity": "high",
+                            "field": f"routing.balancers[{b_index}].fallbackTag",
+                            "reason": "leastPing без fallbackTag до первой пробы не выбирает outbound",
+                        }
+                    )
 
     return issues
 

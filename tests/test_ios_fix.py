@@ -85,12 +85,18 @@ def test_apply_ios_fix_makes_3xui_autoselect_ios_safe() -> None:
     assert result["inbounds"][0]["protocol"] == "socks"
     assert result["inbounds"][0]["tag"] == "socks"
     assert "burstObservatory" not in result
-    assert "observatory" not in result
+    assert "burstObservatory" not in result["routing"]
+    observatory = result["observatory"]
+    assert observatory["subjectSelector"] == ["bal-3-"]
+    assert observatory["probeUrl"] == "https://www.gstatic.com/generate_204"
+    assert observatory["probeInterval"] == "20s"
+    assert observatory["enableConcurrency"] is True
+    assert "observatory" not in result["routing"]
     balancer = result["routing"]["balancers"][0]
     assert balancer["tag"] == "balancer"
     assert balancer["selector"] == ["bal-3-"]
-    assert balancer["strategy"] == {"type": "roundRobin"}
-    assert "fallbackTag" not in balancer
+    assert balancer["strategy"] == {"type": "leastPing"}
+    assert balancer["fallbackTag"] == "bal-3-vless"
     assert [item["tag"] for item in result["outbounds"]] == [
         "bal-3-vless",
         "bal-3-vless-2",
@@ -137,6 +143,85 @@ def test_apply_ios_fix_drops_fallback_tag_on_round_robin() -> None:
     assert result["stats"] == {}
     assert result["dns"]["tag"] == "dns_out"
     assert result["routing"]["rules"][0]["balancerTag"] == "balancer"
+
+
+def test_apply_ios_fix_rewrites_3xui_burst_leastping_dump() -> None:
+    """Raw 3x-ui 3.7.0 Автовыбор: leastPing + burstObservatory + google."""
+    payload = {
+        "remarks": "🇪🇺 Автовыбор",
+        "burstObservatory": {
+            "pingConfig": {
+                "connectivity": "",
+                "destination": "https://www.google.com/generate_204",
+                "httpMethod": "HEAD",
+                "interval": "1m",
+                "sampling": 2,
+                "timeout": "5s",
+            },
+            "subjectSelector": ["bal-3-"],
+        },
+        "dns": {"tag": "dns_out", "servers": [{"address": "8.8.8.8"}]},
+        "stats": {},
+        "inbounds": [
+            {"port": 10808, "protocol": "mixed", "tag": "mixed"},
+            {"port": 10809, "protocol": "http", "tag": "http"},
+        ],
+        "outbounds": [
+            {"protocol": "vless", "tag": "bal-3-vless", "settings": {"address": "caelixflow.com"}},
+            {"protocol": "vless", "tag": "bal-3-vless-2", "settings": {"address": "mirror2"}},
+            {"protocol": "vless", "tag": "bal-3-vless-3", "settings": {"address": "mirror3"}},
+            {"protocol": "vless", "tag": "bal-3-vless-4", "settings": {"address": "mirror1"}},
+            {"protocol": "freedom", "tag": "direct"},
+            {"protocol": "blackhole", "tag": "block"},
+        ],
+        "routing": {
+            "balancers": [
+                {
+                    "fallbackTag": "bal-3-vless",
+                    "selector": ["bal-3-"],
+                    "strategy": {"type": "leastPing"},
+                    "tag": "balancer",
+                }
+            ],
+            "domainStrategy": "AsIs",
+            "rules": [{"balancerTag": "balancer", "network": "tcp,udp", "type": "field"}],
+        },
+    }
+    result = apply_ios_fix(payload)
+    assert result["inbounds"][0]["protocol"] == "socks"
+    assert "burstObservatory" not in result
+    assert result["observatory"]["subjectSelector"] == ["bal-3-"]
+    assert result["observatory"]["probeUrl"] == "https://www.gstatic.com/generate_204"
+    assert result["observatory"]["enableConcurrency"] is True
+    balancer = result["routing"]["balancers"][0]
+    assert balancer["strategy"] == {"type": "leastPing"}
+    assert balancer["fallbackTag"] == "bal-3-vless"
+    assert balancer["selector"] == ["bal-3-"]
+    assert len(result["outbounds"]) == 6
+    assert result["dns"]["tag"] == "dns_out"
+    assert result["stats"] == {}
+
+
+def test_apply_ios_fix_fills_missing_leastping_fallback() -> None:
+    payload = {
+        "inbounds": [{"protocol": "socks", "tag": "socks"}],
+        "outbounds": [
+            {"protocol": "vless", "tag": "bal-3-vless", "settings": {"address": "n1"}},
+            {"protocol": "freedom", "tag": "direct"},
+        ],
+        "routing": {
+            "balancers": [
+                {
+                    "tag": "balancer",
+                    "selector": ["bal-3-"],
+                    "strategy": {"type": "leastPing"},
+                }
+            ]
+        },
+    }
+    result = apply_ios_fix(payload)
+    assert result["routing"]["balancers"][0]["fallbackTag"] == "bal-3-vless"
+    assert result["observatory"]["subjectSelector"] == ["bal-3-"]
 
 
 def test_apply_ios_fix_leaves_stats_and_dns_on_ordinary_proxy() -> None:
