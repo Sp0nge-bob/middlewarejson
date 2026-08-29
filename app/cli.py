@@ -43,19 +43,30 @@ from app.cli_balancer import (
     configure_balancer_interactive,
     run_balancers_menu,
 )
+from app.cli_ops import (
+    preview_subscription,
+    print_dashboard,
+    print_status_bar,
+    run_client_search,
+    run_groups_menu,
+    run_preview_interactive,
+    run_service_menu,
+    show_service_logs,
+)
 from app.cli_service import run_install_systemd, run_service_status_menu
 from app.models.balancer import format_hide_members, format_scope, format_strategy
 from app.country_flags import apply_flag_prefix
 from app.services.profile_builder import suggest_balancer_tag
 
 app = typer.Typer(
-    help="middlewarejson CLI — каталог инбаундов, балансировщики по группам клиентов",
+    help="middlewarejson CLI — прослойка JSON-подписок 3x-ui: настройки, пулы, проверка подписки",
     invoke_without_command=True,
 )
 settings_app = typer.Typer(help="Настройки Panel API")
 catalog_app = typer.Typer(help="Каталог инбаундов из 3x-ui Panel API")
 balancer_app = typer.Typer(help="Балансировщики и их назначение")
 group_app = typer.Typer(help="Группы клиентов 3x-ui")
+client_app = typer.Typer(help="Клиенты из индекса панели")
 service_app = typer.Typer(help="Systemd-служба агента")
 
 app.add_typer(settings_app, name="settings")
@@ -63,6 +74,7 @@ app.add_typer(service_app, name="service")
 app.add_typer(catalog_app, name="catalog")
 app.add_typer(balancer_app, name="balancer")
 app.add_typer(group_app, name="group")
+app.add_typer(client_app, name="client")
 
 def _repo() -> CatalogRepository:
     return CatalogRepository(Database(settings.db_path))
@@ -600,27 +612,43 @@ def _do_run_server() -> None:
         print_error(f"Не удалось запустить сервер: {exc}")
 
 
+def _run_settings_menu() -> None:
+    while True:
+        console.print()
+        print_section("Настройки")
+        print_menu_item(1, "Панель 3x-ui (URL, path, token)")
+        print_menu_item(2, "Агент и upstream")
+        print_menu_item(3, "Режим трансформации")
+        print_menu_item(4, "Проверить Panel API")
+        print_menu_item(0, "Назад")
+        choice = prompt_line("Выбор [0 — назад]")
+        if choice == "0" or not choice:
+            return
+        if choice == "1":
+            _do_panel_settings_show()
+            if confirm_prompt("Изменить настройки панели?", default=False):
+                _do_edit_panel_settings(_repo())
+        elif choice == "2":
+            _do_script_settings_show()
+        elif choice == "3":
+            _do_edit_transform_mode(_repo())
+        elif choice == "4":
+            _do_panel_test()
+        else:
+            print_warning("Неизвестный пункт")
+
+
 def _print_interactive_menu() -> None:
-    print_section("Настройки")
-    print_menu_item(1, "Показать настройки панели")
-    print_menu_item(2, "Показать настройки скрипта")
-    print_menu_item(3, "Проверить подключение к панели")
-    print_menu_item(4, "Проверить состояние скрипта (systemd)")
-    print_menu_item(5, "Установить службу systemd")
-
-    print_section("Данные панели")
-    print_menu_item(6, "Список инбаундов")
-    print_menu_item(7, "Список групп")
-
-    print_section("Настройка JSON")
-    print_menu_item(8, "Балансировщики")
-
-    print_section("Синхронизация")
-    print_menu_item(9, "Синхронизация")
-
-    print_section("Отладка")
-    print_menu_item(10, f"Запустить агент вручную (uvicorn :{settings.agent_port})")
-
+    print_section("Главное меню")
+    print_menu_item(1, "Обзор состояния")
+    print_menu_item(2, "Настройки")
+    print_menu_item(3, "Служба systemd")
+    print_menu_item(4, "Синхронизация с панелью")
+    print_menu_item(5, "Инбаунды")
+    print_menu_item(6, "Группы и клиенты")
+    print_menu_item(7, "Балансировщики")
+    print_menu_item(8, "Проверить подписку (JSON)")
+    print_menu_item(9, f"Запустить агент вручную (:{settings.agent_port})")
     console.print()
     print_menu_item(0, "Выход")
 
@@ -628,39 +656,39 @@ def _print_interactive_menu() -> None:
 def run_interactive_menu() -> None:
     print_header(
         "middlewarejson",
-        subtitle="трансформация JSON-подписок 3x-ui",
+        subtitle="прослойка JSON-подписок 3x-ui → HAPP",
     )
+    try:
+        print_status_bar()
+    except Exception:
+        pass
 
     while True:
         _print_interactive_menu()
-        choice = text_prompt("Выбор", default="0").strip()
+        choice = text_prompt("Выбор", default="").strip()
 
         if choice == "0":
             console.print("[dim]До свидания[/dim]")
             break
+        if not choice:
+            continue
         if choice == "1":
-            _do_panel_settings_show()
-            if confirm_prompt("Изменить настройки панели?", default=False):
-                _do_edit_panel_settings(_repo())
+            print_dashboard()
         elif choice == "2":
-            _do_script_settings_show()
-            if confirm_prompt("Переключить режим трансформации?", default=False):
-                _do_edit_transform_mode(_repo())
+            _run_settings_menu()
         elif choice == "3":
-            _do_panel_test()
+            run_service_menu(run_service_status_menu, run_install_systemd)
         elif choice == "4":
-            run_service_status_menu()
-        elif choice == "5":
-            run_install_systemd()
-        elif choice == "6":
-            _do_catalog_list()
-        elif choice == "7":
-            _do_group_list()
-        elif choice == "8":
-            _do_balancers_menu()
-        elif choice == "9":
             _do_sync_all()
-        elif choice == "10":
+        elif choice == "5":
+            _do_catalog_list()
+        elif choice == "6":
+            run_groups_menu(_do_group_list, _do_group_show)
+        elif choice == "7":
+            _do_balancers_menu()
+        elif choice == "8":
+            run_preview_interactive()
+        elif choice == "9":
             _do_run_server()
         else:
             print_warning("Неизвестный пункт")
@@ -916,6 +944,34 @@ def balancer_delete(
     else:
         console.print(f"[red]Балансировщик '{tag}' не найден[/red]")
         raise typer.Exit(1)
+
+
+@app.command("status")
+def status_cmd() -> None:
+    """Сводка: режим, служба, health, каталог, пулы."""
+    print_dashboard()
+
+
+@app.command("preview")
+def preview_cmd(
+    ref: str = typer.Argument(..., help="sub_id или JSON URL подписки"),
+) -> None:
+    """Показать, какие профили получит клиент после трансформации."""
+    preview_subscription(ref)
+
+
+@app.command("logs")
+def logs_cmd(
+    lines: int = typer.Option(40, "--lines", "-n", help="Сколько строк journalctl"),
+) -> None:
+    """Последние строки journalctl службы."""
+    show_service_logs(lines=lines)
+
+
+@client_app.command("find")
+def client_find_cmd() -> None:
+    """Найти клиента по email / группе / sub_id."""
+    run_client_search()
 
 
 @app.command("interactive")

@@ -106,7 +106,7 @@ def run_service_status_menu() -> None:
 
     status = read_service_status()
     if not status.installed:
-        print_info("Установите службу через п. 5 в меню «Настройки»")
+        print_info("Установите службу: главное меню → «Служба systemd»")
         return
 
     console.print()
