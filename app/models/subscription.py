@@ -1,3 +1,4 @@
+import json
 import re
 from typing import Any
 from urllib.parse import urlparse
@@ -49,3 +50,19 @@ def validate_payload(payload: SubscriptionPayload) -> None:
         outbounds = config.get("outbounds")
         if not isinstance(outbounds, list):
             raise ValueError("missing or invalid outbounds array")
+
+
+def try_load_json_subscription(body: str) -> SubscriptionPayload | None:
+    """JSON subscription payload, or None if the body is not JSON at all.
+
+    Raises json.JSONDecodeError / ValueError when the body looks like JSON
+    but is not a valid Xray subscription (object/array with outbounds).
+    """
+    stripped = body.lstrip("\ufeff").strip()
+    if not stripped:
+        raise ValueError("empty subscription payload")
+    if stripped[0] not in "{[":
+        return None
+    payload: SubscriptionPayload = json.loads(body)
+    validate_payload(payload)
+    return payload

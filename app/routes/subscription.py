@@ -6,7 +6,11 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 
 from app.db.database import Database
 from app.db.repository import CatalogRepository
-from app.models.subscription import SubscriptionPayload, validate_payload, validate_sub_id
+from app.models.subscription import (
+    SubscriptionPayload,
+    try_load_json_subscription,
+    validate_sub_id,
+)
 from app.services.panel_api import PANEL_API_BASE_URL_KEY, resolve_upstream_base_url
 from app.services.upstream import UpstreamClient, UpstreamError
 
@@ -15,6 +19,10 @@ logger = logging.getLogger(__name__)
 
 def _serialize_payload(payload: SubscriptionPayload) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+
+
+def _headers_without_content_type(headers: dict[str, str]) -> dict[str, str]:
+    return {key: value for key, value in headers.items() if key.lower() != "content-type"}
 
 
 def build_subscription_router(json_path: str) -> APIRouter:
@@ -56,8 +64,7 @@ def build_subscription_router(json_path: str) -> APIRouter:
             return PlainTextResponse(status_code=result.status_code, content=result.body)
 
         try:
-            payload: SubscriptionPayload = json.loads(result.body)
-            validate_payload(payload)
+            payload = try_load_json_subscription(result.body)
         except (json.JSONDecodeError, ValueError, TypeError) as exc:
             snippet = result.body.strip().replace("\n", " ")[:180]
             logger.warning(
@@ -68,6 +75,20 @@ def build_subscription_router(json_path: str) -> APIRouter:
             )
             return PlainTextResponse(status_code=502, content="invalid upstream json")
 
+        if payload is None:
+            headers = {
+                **_headers_without_content_type(result.headers),
+                "Cache-Control": "no-store",
+            }
+            content_type = next(
+                (value for key, value in result.headers.items() if key.lower() == "content-type"),
+                "text/plain; charset=utf-8",
+            )
+            headers["Content-Type"] = content_type
+            if request.method == "HEAD":
+                return Response(status_code=200, headers=headers)
+            return PlainTextResponse(status_code=200, content=result.body, headers=headers)
+
         try:
             transformed = request.app.state.transform_service.transform(sub_id, payload)
             body = _serialize_payload(transformed)
@@ -76,7 +97,7 @@ def build_subscription_router(json_path: str) -> APIRouter:
             return PlainTextResponse(status_code=500, content="transform failed")
 
         headers = {
-            **result.headers,
+            **_headers_without_content_type(result.headers),
             "Content-Type": "application/json; charset=utf-8",
             "Cache-Control": "no-store",
         }

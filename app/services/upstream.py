@@ -11,6 +11,7 @@ PASSTHROUGH_REQUEST_HEADERS = ("user-agent", "accept", "accept-language")
 JSON_CLIENT_USER_AGENT = "Happ/1.0"
 _TOOL_USER_AGENTS = ("python-httpx", "python-requests", "aiohttp")
 PASSTHROUGH_RESPONSE_HEADERS = (
+    "content-type",
     "subscription-userinfo",
     "profile-update-interval",
     "profile-title",
