@@ -139,6 +139,7 @@ def test_apply_ios_fix_drops_fallback_tag_on_round_robin() -> None:
     assert "fallbackTag" not in balancer
     assert "observatory" not in result
     assert "observatory" not in result["routing"]
+    assert "burstObservatory" not in result
     assert len(result["outbounds"]) == 3
     assert result["stats"] == {}
     assert result["dns"]["tag"] == "dns_out"
@@ -200,6 +201,88 @@ def test_apply_ios_fix_rewrites_3xui_burst_leastping_dump() -> None:
     assert len(result["outbounds"]) == 6
     assert result["dns"]["tag"] == "dns_out"
     assert result["stats"] == {}
+
+
+def test_apply_ios_fix_keeps_leastload_with_burst() -> None:
+    payload = {
+        "remarks": "🇪🇺 Автовыбор",
+        "burstObservatory": {
+            "pingConfig": {
+                "connectivity": "http://connectivitycheck.platform.hicloud.com/generate_204",
+                "destination": "https://www.google.com/generate_204",
+                "httpMethod": "HEAD",
+                "interval": "1m",
+                "sampling": 2,
+                "timeout": "5s",
+            },
+            "subjectSelector": ["bal-3-"],
+        },
+        "dns": {"tag": "dns_out", "servers": ["8.8.8.8"]},
+        "stats": {},
+        "inbounds": [{"protocol": "mixed", "tag": "mixed"}],
+        "outbounds": [
+            {"protocol": "vless", "tag": "bal-3-vless", "settings": {"address": "n1"}},
+            {"protocol": "vless", "tag": "bal-3-vless-2", "settings": {"address": "n2"}},
+            {"protocol": "freedom", "tag": "direct"},
+        ],
+        "routing": {
+            "balancers": [
+                {
+                    "tag": "balancer",
+                    "selector": ["bal-3-"],
+                    "strategy": {
+                        "type": "leastLoad",
+                        "settings": {"expected": 1, "tolerance": 0.1},
+                    },
+                    "fallbackTag": "bal-3-vless",
+                }
+            ],
+            "rules": [{"type": "field", "network": "tcp,udp", "balancerTag": "balancer"}],
+        },
+    }
+    result = apply_ios_fix(payload)
+    assert result["inbounds"][0]["protocol"] == "socks"
+    assert "observatory" not in result
+    burst = result["burstObservatory"]
+    assert burst["subjectSelector"] == ["bal-3-"]
+    assert burst["pingConfig"]["destination"] == "https://www.gstatic.com/generate_204"
+    assert burst["pingConfig"]["connectivity"] == ""
+    assert burst["pingConfig"]["interval"] == "20s"
+    assert burst["pingConfig"]["sampling"] == 2
+    balancer = result["routing"]["balancers"][0]
+    assert balancer["strategy"]["type"] == "leastLoad"
+    assert balancer["strategy"]["settings"] == {"expected": 1, "tolerance": 0.1}
+    assert balancer["fallbackTag"] == "bal-3-vless"
+    assert [item["tag"] for item in result["outbounds"]] == [
+        "bal-3-vless",
+        "bal-3-vless-2",
+        "direct",
+    ]
+    assert result["stats"] == {}
+    assert result["dns"]["tag"] == "dns_out"
+
+
+def test_apply_ios_fix_maps_random_to_round_robin() -> None:
+    payload = {
+        "inbounds": [{"protocol": "socks", "tag": "socks"}],
+        "outbounds": [{"protocol": "vless", "tag": "bal-3-vless"}],
+        "routing": {
+            "balancers": [
+                {
+                    "tag": "balancer",
+                    "selector": ["bal-3-"],
+                    "strategy": {"type": "random"},
+                    "fallbackTag": "bal-3-vless",
+                }
+            ]
+        },
+        "burstObservatory": {"subjectSelector": ["bal-3-"]},
+    }
+    result = apply_ios_fix(payload)
+    assert result["routing"]["balancers"][0]["strategy"] == {"type": "roundRobin"}
+    assert "fallbackTag" not in result["routing"]["balancers"][0]
+    assert "observatory" not in result
+    assert "burstObservatory" not in result
 
 
 def test_apply_ios_fix_fills_missing_leastping_fallback() -> None:

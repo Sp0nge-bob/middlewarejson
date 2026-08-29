@@ -1,14 +1,11 @@
 """iOS-FIX: passthrough + HAPP iPhone / Xray balancer parser fixes.
 
 1. First inbound mixed → socks (HAPP iOS / 3x-ui#3718).
-2. Keep 3x-ui Автовыбор as a real balancer (all members + selector).
-   leastPing as designed needs top-level `observatory` (not burstObservatory):
-   Xray author: leastPing ↔ observatory, leastLoad ↔ burstObservatory.
-   3x-ui JSON sub emits burstObservatory + google generate_204; burst does
-   not probe at start (#3058) and connectivity probes can loop in TUN.
-   So: keep leastPing + fallbackTag, swap burst → observatory, probe via
-   gstatic, enableConcurrency. roundRobin/random still drop fallbackTag
-   without observatory (3x-ui#2724, Xray-core#5913).
+2. Keep the 3x-ui balancer type; only rewrite JSON so LibXray starts on iOS:
+   - leastPing  → observatory (not burst), fallbackTag, gstatic, concurrency
+   - leastLoad  → burstObservatory, connectivity="", fallbackTag, gstatic
+   - roundRobin / random → roundRobin, no fallbackTag, no observatory
+     (3x-ui#2724: fallbackTag registers Observatory)
    Ordinary single-proxy profiles are not rewritten.
 3. Strip sniffing fakedns (no fakedns inbound in 3x-ui JSON).
 """
@@ -22,7 +19,10 @@ from app.models.subscription import SubscriptionPayload
 
 _PROBE_URL = "https://www.gstatic.com/generate_204"
 _PROBE_INTERVAL = "20s"
-_LEAST_PING_TYPES = frozenset({"leastping", "least_ping", "leastload", "least_load"})
+_BURST_TIMEOUT = "5s"
+_BURST_SAMPLING = 2
+_LEAST_PING_TYPES = frozenset({"leastping", "least_ping"})
+_LEAST_LOAD_TYPES = frozenset({"leastload", "least_load"})
 _SYSTEM_PROTOCOLS = frozenset({"freedom", "blackhole", "dns"})
 
 
@@ -160,8 +160,45 @@ def _unique(values: list[str]) -> list[str]:
     return seen
 
 
+def _strategy_settings(balancer: dict[str, Any]) -> Any:
+    strategy = balancer.get("strategy")
+    if isinstance(strategy, dict):
+        return strategy.get("settings")
+    return None
+
+
+def _apply_fallback(entry: dict[str, Any], config: dict[str, Any], selector: list[Any]) -> None:
+    fallback = str(entry.get("fallbackTag") or "").strip()
+    if not fallback:
+        fallback = _first_member_tag(config, selector)
+    if fallback:
+        entry["fallbackTag"] = fallback
+    else:
+        entry.pop("fallbackTag", None)
+
+
+def _selector_values(selector: list[Any]) -> list[str]:
+    return [str(item) for item in selector if item]
+
+
+def _burst_sampling(config: dict[str, Any], routing: dict[str, Any]) -> int:
+    for block in (config.get("burstObservatory"), routing.get("burstObservatory")):
+        if not isinstance(block, dict):
+            continue
+        ping = block.get("pingConfig")
+        if not isinstance(ping, dict):
+            continue
+        try:
+            sampling = int(ping.get("sampling") or 0)
+        except (TypeError, ValueError):
+            continue
+        if sampling > 0:
+            return sampling
+    return _BURST_SAMPLING
+
+
 def _fix_panel_balancer(config: dict[str, Any]) -> None:
-    """Keep the pool; make 3x-ui leastPing work on iPhone LibXray.
+    """Keep the 3x-ui strategy; rewrite only the iOS/Xray parser traps.
 
     Do not flatten members or rewrite ordinary proxies (stats/dns/policy).
     """
@@ -173,8 +210,10 @@ def _fix_panel_balancer(config: dict[str, Any]) -> None:
         return
 
     probe_url = _existing_probe_url(config, routing)
+    sampling = _burst_sampling(config, routing)
     rewritten: list[dict[str, Any]] = []
-    observatory_selectors: list[str] = []
+    ping_selectors: list[str] = []
+    load_selectors: list[str] = []
 
     for balancer in balancers:
         if not isinstance(balancer, dict):
@@ -184,24 +223,33 @@ def _fix_panel_balancer(config: dict[str, Any]) -> None:
         if not isinstance(selector, list) or not selector:
             continue
         stype = _balancer_strategy_type(entry)
+        prefixes = _selector_values(selector)
+
         if stype in _LEAST_PING_TYPES:
             entry["strategy"] = {"type": "leastPing"}
-            fallback = str(entry.get("fallbackTag") or "").strip()
-            if not fallback:
-                fallback = _first_member_tag(config, selector)
-            if fallback:
-                entry["fallbackTag"] = fallback
-            else:
-                entry.pop("fallbackTag", None)
-            observatory_selectors.extend(str(item) for item in selector if item)
+            _apply_fallback(entry, config, selector)
+            ping_selectors.extend(prefixes)
             rewritten.append(entry)
             continue
-        # random / roundRobin: fallbackTag registers Observatory (3x-ui#2724).
+
+        if stype in _LEAST_LOAD_TYPES:
+            settings = _strategy_settings(entry)
+            if isinstance(settings, dict) and settings:
+                entry["strategy"] = {"type": "leastLoad", "settings": copy.deepcopy(settings)}
+            else:
+                entry["strategy"] = {"type": "leastLoad"}
+            _apply_fallback(entry, config, selector)
+            load_selectors.extend(prefixes)
+            rewritten.append(entry)
+            continue
+
+        # roundRobin / random / unknown: fallbackTag registers Observatory.
         entry["strategy"] = {"type": "roundRobin"}
         entry.pop("fallbackTag", None)
         rewritten.append(entry)
 
     config.pop("burstObservatory", None)
+    config.pop("observatory", None)
     routing.pop("burstObservatory", None)
     routing.pop("observatory", None)
 
@@ -209,16 +257,28 @@ def _fix_panel_balancer(config: dict[str, Any]) -> None:
         routing["balancers"] = rewritten
     else:
         routing.pop("balancers", None)
-        config.pop("observatory", None)
         return
 
-    selectors = _unique(observatory_selectors)
-    if selectors:
+    # Both types register Observatory; never emit both in one config.
+    # leastLoad needs burst HealthPing; leastPing can read burst too.
+    load_selectors = _unique(load_selectors)
+    ping_selectors = _unique(ping_selectors)
+    if load_selectors:
+        config["burstObservatory"] = {
+            "subjectSelector": _unique(load_selectors + ping_selectors),
+            "pingConfig": {
+                "destination": probe_url,
+                "connectivity": "",
+                "interval": _PROBE_INTERVAL,
+                "sampling": sampling,
+                "timeout": _BURST_TIMEOUT,
+                "httpMethod": "HEAD",
+            },
+        }
+    elif ping_selectors:
         config["observatory"] = {
-            "subjectSelector": selectors,
+            "subjectSelector": ping_selectors,
             "probeUrl": probe_url,
             "probeInterval": _PROBE_INTERVAL,
             "enableConcurrency": True,
         }
-    else:
-        config.pop("observatory", None)

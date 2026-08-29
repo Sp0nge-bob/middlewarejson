@@ -64,7 +64,7 @@ def _transform_mode_label(mode: str) -> str:
     if mode == "rules":
         return "rules — балансировщики"
     if mode == "ios-fix":
-        return "ios-fix — mixed→socks, Автовыбор leastPing+observatory"
+        return "ios-fix — mixed→socks, балансер 3x-ui под iOS"
     return "passthrough — без изменений"
 
 
