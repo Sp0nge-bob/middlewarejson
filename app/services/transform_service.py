@@ -8,6 +8,7 @@ from app.services.panel_api import TRANSFORM_MODE_KEY, resolve_transform_mode
 from app.services.profile_builder import build_balancer_rules
 from app.services.transformer import PassthroughTransformer
 from app.transformers.client_compat import normalize_for_client
+from app.transformers.ios_fix import apply_ios_fix
 from app.transformers.rules_engine import RulesTransformer
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,9 @@ class TransformService:
 
     def transform(self, sub_id: str, payload: SubscriptionPayload) -> SubscriptionPayload:
         mode = self._resolved_mode()
+        if mode == "ios-fix":
+            logger.info("ios-fix for sub_id=%s: first inbound mixed → socks", sub_id)
+            return apply_ios_fix(self._passthrough.transform(payload))
         if mode != "rules":
             logger.info(
                 "transform skipped for sub_id=%s: TRANSFORM_MODE=%s (need rules)",

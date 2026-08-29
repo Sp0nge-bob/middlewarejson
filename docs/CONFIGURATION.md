@@ -30,7 +30,7 @@
 
 | Переменная | По умолчанию | Описание |
 |------------|--------------|----------|
-| `TRANSFORM_MODE` | `passthrough` | `passthrough` — без изменений; `rules` — балансировщики из SQLite |
+| `TRANSFORM_MODE` | `passthrough` | `passthrough` — без изменений; `ios-fix` — только первый inbound `mixed` → `socks` (iPhone); `rules` — балансировщики из SQLite |
 | `DB_PATH` | `data/middleware.db` | SQLite: каталог, группы, балансировщики |
 
 ### Panel API (3x-ui)

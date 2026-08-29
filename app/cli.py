@@ -232,6 +232,8 @@ def _do_panel_settings_show() -> None:
 def _transform_mode_label(mode: str) -> str:
     if mode == "rules":
         return "rules — балансировщики и трансформации"
+    if mode == "ios-fix":
+        return "ios-fix — passthrough, первый inbound mixed → socks"
     return "passthrough — подписка без изменений"
 
 
@@ -253,6 +255,7 @@ def _do_edit_transform_mode(repo: CatalogRepository) -> None:
     print_field("Текущий режим", _transform_mode_label(current))
     print_menu_item(1, "rules — балансировщики и трансформации")
     print_menu_item(2, "passthrough — подписка без изменений")
+    print_menu_item(3, "ios-fix — passthrough + socks вместо mixed (iPhone)")
     print_menu_item(0, "Назад")
 
     choice = prompt_line("Выбор [0 — назад]")
@@ -262,6 +265,8 @@ def _do_edit_transform_mode(repo: CatalogRepository) -> None:
         target = "rules"
     elif choice == "2":
         target = "passthrough"
+    elif choice == "3":
+        target = "ios-fix"
     else:
         print_warning("Неизвестный пункт")
         return
@@ -730,10 +735,10 @@ def settings_script_show() -> None:
 def settings_transform_mode(
     mode: str = typer.Argument(
         "",
-        help="rules или passthrough; без аргумента — интерактивный выбор",
+        help="rules, passthrough или ios-fix; без аргумента — интерактивный выбор",
     ),
 ) -> None:
-    """Переключить режим трансформации подписки (rules / passthrough)."""
+    """Переключить режим трансформации подписки (rules / passthrough / ios-fix)."""
     if not mode:
         _do_edit_transform_mode(_repo())
         return

@@ -15,13 +15,17 @@ PANEL_WEB_BASE_PATH_KEY = "panel_web_base_path"
 PANEL_API_BASE_URL_KEY = "panel_api_base_url"
 TRANSFORM_MODE_KEY = "transform_mode"
 
-VALID_TRANSFORM_MODES = frozenset({"rules", "passthrough"})
+VALID_TRANSFORM_MODES = frozenset({"rules", "passthrough", "ios-fix"})
 
 
 def normalize_transform_mode(value: str) -> str:
-    mode = value.strip().lower()
+    mode = value.strip().lower().replace("_", "-")
+    if mode == "iosfix":
+        mode = "ios-fix"
     if mode not in VALID_TRANSFORM_MODES:
-        raise ValueError(f"режим должен быть rules или passthrough, получено: {value!r}")
+        raise ValueError(
+            f"режим должен быть rules, passthrough или ios-fix, получено: {value!r}"
+        )
     return mode
 
 

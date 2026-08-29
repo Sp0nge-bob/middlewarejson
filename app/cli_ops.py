@@ -63,6 +63,8 @@ def _repo() -> CatalogRepository:
 def _transform_mode_label(mode: str) -> str:
     if mode == "rules":
         return "rules — балансировщики"
+    if mode == "ios-fix":
+        return "ios-fix — mixed → socks"
     return "passthrough — без изменений"
 
 
