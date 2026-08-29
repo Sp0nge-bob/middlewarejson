@@ -34,8 +34,10 @@ def test_transform_service_uses_database_mode_without_restart() -> None:
     import json
 
     db_path = Path(__file__).parent / "_transform_mode_test.db"
-    if db_path.exists():
-        db_path.unlink()
+    try:
+        db_path.unlink(missing_ok=True)
+    except PermissionError:
+        pass
     repo = CatalogRepository(Database(db_path))
     repo.create_balancer(
         tag="pool",
@@ -55,11 +57,17 @@ def test_transform_service_uses_database_mode_without_restart() -> None:
     )
 
     passthrough_result = service.transform("client_a_sub_id12", configs)
-    assert passthrough_result == configs
+    passthrough_remarks = [item["remarks"] for item in passthrough_result]
+    assert "NL-WS" in passthrough_remarks
+    assert "hysteria-turn" not in passthrough_remarks
+    assert "Pool" not in passthrough_remarks
 
     repo.set_setting(TRANSFORM_MODE_KEY, "rules")
     rules_result = service.transform("client_a_sub_id12", configs)
     remarks = [item["remarks"] for item in rules_result]
     assert "Pool" in remarks
     assert "NL-WS" not in remarks
-    db_path.unlink(missing_ok=True)
+    try:
+        db_path.unlink(missing_ok=True)
+    except PermissionError:
+        pass

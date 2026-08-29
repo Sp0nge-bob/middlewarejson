@@ -3,7 +3,16 @@ import json
 from pathlib import Path
 
 from app.models.rules_schema import TransformRules
-from app.transformers.rules_engine import RulesTransformer
+from app.transformers.rules_engine import RulesTransformer, member_tag_prefix
+
+
+def _proxy_outbounds(config: dict) -> list[dict]:
+    return [
+        outbound
+        for outbound in config.get("outbounds", [])
+        if outbound.get("protocol") not in ("freedom", "blackhole", "dns")
+        and outbound.get("tag") not in ("direct", "block")
+    ]
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_nodes.json"
 
@@ -45,15 +54,21 @@ def test_global_balancer_nl_and_us_from_different_servers() -> None:
     assert "hysteria" in remarks
 
     global_config = next(item for item in result if item["remarks"] == "NL+USA Balance")
+    prefix = member_tag_prefix("global-pool")
     selector = global_config["routing"]["balancers"][0]["selector"]
-    assert selector == ["nl-ws", "us-ws"]
+    assert selector == [prefix]
+    assert global_config["routing"]["balancers"][0]["tag"] == "balancer"
 
-    outbounds_by_tag = {o["tag"]: o for o in global_config["outbounds"]}
-    assert outbounds_by_tag["nl-ws"]["settings"]["address"] == "node1.example.com"
-    assert outbounds_by_tag["us-ws"]["settings"]["address"] == "node3.example.com"
-    assert outbounds_by_tag["nl-ws"]["settings"]["address"] != outbounds_by_tag["us-ws"]["settings"]["address"]
+    proxies = _proxy_outbounds(global_config)
+    addresses = {item["settings"]["address"] for item in proxies}
+    assert addresses == {"node1.example.com", "node3.example.com"}
+    assert all(item["tag"].startswith(prefix) for item in proxies)
+    assert "observatory" not in global_config
+    assert "burstObservatory" not in global_config
 
-    assert global_config["routing"]["balancers"][0]["strategy"] == {"type": "roundRobin"}
+    balancer_entry = global_config["routing"]["balancers"][0]
+    assert balancer_entry["strategy"] == {"type": "roundRobin"}
+    assert balancer_entry["fallbackTag"].startswith(prefix)
 
 
 def test_balancer_members_can_use_inbound_ids() -> None:
@@ -86,7 +101,14 @@ def test_balancer_members_can_use_inbound_ids() -> None:
     transformer = RulesTransformer(TransformRules.from_dict(rules_data))
     result = transformer.transform(payload)
     ws_config = next(item for item in result if item["remarks"] == "WS Pool")
-    assert set(ws_config["routing"]["balancers"][0]["selector"]) == {nl_fp, us_fp}
+    prefix = member_tag_prefix("ws-pool")
+    assert ws_config["routing"]["balancers"][0]["selector"] == [prefix]
+    proxies = _proxy_outbounds(ws_config)
+    assert len(proxies) == 2
+    assert {item["settings"]["address"] for item in proxies} == {
+        "node1.example.com",
+        "node3.example.com",
+    }
 
 
 def test_balancer_partial_members_still_works_without_failed_suffix() -> None:
@@ -120,10 +142,13 @@ def test_balancer_partial_members_still_works_without_failed_suffix() -> None:
     transformer = RulesTransformer(TransformRules.from_dict(rules_data))
     result = transformer.transform(payload)
     pool_config = next(item for item in result if item["remarks"] == "TESTBALANCE")
-    assert len(pool_config["routing"]["balancers"][0]["selector"]) == 1
+    assert pool_config["routing"]["balancers"][0]["selector"] == [
+        member_tag_prefix("mixed-pool")
+    ]
+    assert len(_proxy_outbounds(pool_config)) == 1
 
 
-def test_balancer_no_members_adds_failed_suffix() -> None:
+def test_balancer_no_members_is_skipped() -> None:
     payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
     rules_data = copy.deepcopy(_base_rules())
     rules_data["tagging"]["rules"] = []
@@ -140,10 +165,15 @@ def test_balancer_no_members_adds_failed_suffix() -> None:
 
     transformer = RulesTransformer(TransformRules.from_dict(rules_data))
     result = transformer.transform(payload)
-    failed_config = next(
-        item for item in result if item["remarks"] == "TESTBALANCE - Failed"
+    remarks = [item["remarks"] for item in result]
+    assert "TESTBALANCE" not in remarks
+    assert "TESTBALANCE - Failed" not in remarks
+    assert not any(
+        "balancers" in (item.get("routing") or {})
+        and item["routing"]["balancers"][0].get("selector") == []
+        for item in result
+        if isinstance(item.get("routing"), dict) and item["routing"].get("balancers")
     )
-    assert failed_config["routing"]["balancers"][0]["selector"] == []
 
 
 def test_least_ping_strategy_in_balancer_output() -> None:
@@ -161,9 +191,17 @@ def test_least_ping_strategy_in_balancer_output() -> None:
     transformer = RulesTransformer(TransformRules.from_dict(rules_data))
     result = transformer.transform(payload)
     ping_config = next(item for item in result if item["remarks"] == "Fastest")
-    assert ping_config["routing"]["balancers"][0]["strategy"] == {"type": "leastPing"}
-    assert ping_config["observatory"]["subjectSelector"] == ["nl-ws", "us-ws"]
-    assert ping_config["observatory"]["probeUrl"] == "https://www.google.com/generate_204"
+    prefix = member_tag_prefix("ping-pool")
+    balancer_entry = ping_config["routing"]["balancers"][0]
+    assert balancer_entry["strategy"] == {"type": "leastPing"}
+    assert balancer_entry["selector"] == [prefix]
+    assert balancer_entry["fallbackTag"].startswith(prefix)
+    assert "observatory" not in ping_config
+    assert ping_config["burstObservatory"]["subjectSelector"] == [prefix]
+    assert ping_config["burstObservatory"]["pingConfig"]["destination"] == (
+        "https://www.google.com/generate_204"
+    )
+    assert ping_config["burstObservatory"]["pingConfig"]["httpMethod"] == "HEAD"
 
 
 def test_balancer_hide_members_false_keeps_standalone_profiles() -> None:
@@ -211,8 +249,65 @@ def test_balancer_members_can_use_remarks_match() -> None:
     transformer = RulesTransformer(TransformRules.from_dict(rules_data))
     result = transformer.transform(payload)
     nl_config = next(item for item in result if item["remarks"] == "NL Pool")
-    assert set(nl_config["routing"]["balancers"][0]["selector"]) == {
-        "nl-ws",
-        "nl-xhttp",
-        "nl-grpc",
+    prefix = member_tag_prefix("nl-pool")
+    assert nl_config["routing"]["balancers"][0]["selector"] == [prefix]
+    proxies = _proxy_outbounds(nl_config)
+    assert len(proxies) == 3
+    assert all(item["tag"].startswith(prefix) for item in proxies)
+
+
+def test_balancer_keeps_template_inbounds_and_rewrites_proxy_rule() -> None:
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    result = RulesTransformer(TransformRules.from_dict(_base_rules())).transform(payload)
+    pool = next(item for item in result if item["remarks"] == "NL+USA Balance")
+
+    assert pool["inbounds"] == payload[0]["inbounds"]
+    rules = pool["routing"]["rules"]
+    assert any(rule.get("balancerTag") == "balancer" for rule in rules)
+    assert not any(rule.get("outboundTag") == "proxy" for rule in rules)
+    assert all("|" not in outbound.get("tag", "") for outbound in pool["outbounds"])
+    assert pool["routing"]["balancers"][0]["fallbackTag"].startswith(
+        member_tag_prefix("global-pool")
+    )
+
+
+def test_balancer_skips_loopback_members() -> None:
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    payload.append(
+        {
+            "remarks": "local-turn",
+            "outbounds": [
+                {
+                    "protocol": "vless",
+                    "tag": "proxy",
+                    "streamSettings": {"network": "ws"},
+                    "settings": {"address": "127.0.0.1", "port": 9000},
+                },
+                {"protocol": "freedom", "tag": "direct"},
+            ],
+        }
+    )
+    rules_data = copy.deepcopy(_base_rules())
+    rules_data["tagging"]["rules"] = []
+    rules_data["balancers"] = [
+        {
+            "tag": "mixed-pool",
+            "remarks": "Pool",
+            "strategy": "roundRobin",
+            "members": [
+                {
+                    "match": {
+                        "address_equals": ["127.0.0.1", "node1.example.com"],
+                    }
+                }
+            ],
+        }
+    ]
+    result = RulesTransformer(TransformRules.from_dict(rules_data)).transform(payload)
+    pool = next(item for item in result if item["remarks"] == "Pool")
+    addresses = {
+        outbound["settings"]["address"]
+        for outbound in _proxy_outbounds(pool)
     }
+    assert "127.0.0.1" not in addresses
+    assert "node1.example.com" in addresses

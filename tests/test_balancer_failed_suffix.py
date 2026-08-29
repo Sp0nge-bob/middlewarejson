@@ -9,7 +9,7 @@ from app.services.transform_service import TransformService
 RAW_FIXTURE = Path(__file__).parent / "fixtures" / "raw_3xui_subscription.json"
 
 
-def test_partial_balancer_members_mark_profile_failed(tmp_path: Path) -> None:
+def test_unmatched_balancer_is_not_emitted(tmp_path: Path) -> None:
     repo = CatalogRepository(Database(tmp_path / "failed.db"))
     present_fp = "vless|node1.example.com|ws|/ws-path|443|tls|"
     missing_fp = "vless|missing.example.com|ws|/ws-path|443|tls|"
@@ -35,5 +35,5 @@ def test_partial_balancer_members_mark_profile_failed(tmp_path: Path) -> None:
     result = service.transform("client_a_sub_id12", configs)
     remarks = [item["remarks"] for item in result]
 
-    assert "TESTBALANCE - Failed" in remarks
+    assert "TESTBALANCE - Failed" not in remarks
     assert "TESTBALANCE" not in remarks

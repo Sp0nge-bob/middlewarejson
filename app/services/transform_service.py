@@ -7,6 +7,7 @@ from app.models.subscription import SubscriptionPayload
 from app.services.panel_api import TRANSFORM_MODE_KEY, resolve_transform_mode
 from app.services.profile_builder import build_balancer_rules
 from app.services.transformer import PassthroughTransformer
+from app.transformers.client_compat import normalize_for_client
 from app.transformers.rules_engine import RulesTransformer
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ class TransformService:
                 sub_id,
                 mode,
             )
-            return self._passthrough.transform(payload)
+            return normalize_for_client(self._passthrough.transform(payload))
 
         balancer_tags = self._repository.get_balancer_tags_for_sub_id(sub_id)
         if not balancer_tags:
@@ -42,7 +43,7 @@ class TransformService:
                 sub_id,
                 group_name or "not in index",
             )
-            return self._passthrough.transform(payload)
+            return normalize_for_client(self._passthrough.transform(payload))
 
         db_rules = build_balancer_rules(self._repository, balancer_tags)
         if db_rules is None:
@@ -51,11 +52,11 @@ class TransformService:
                 balancer_tags,
                 sub_id,
             )
-            return self._passthrough.transform(payload)
+            return normalize_for_client(self._passthrough.transform(payload))
 
         logger.info(
             "transform rules for sub_id=%s: balancers=%s",
             sub_id,
             balancer_tags,
         )
-        return RulesTransformer(db_rules).transform(payload)
+        return normalize_for_client(RulesTransformer(db_rules).transform(payload))

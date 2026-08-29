@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from app.models.rules_schema import TransformRules
-from app.transformers.rules_engine import RulesTransformer
+from app.transformers.rules_engine import RulesTransformer, member_tag_prefix
 
 FIXTURE = Path(__file__).parent / "fixtures" / "raw_3xui_subscription.json"
 
@@ -26,4 +26,4 @@ def test_balancer_matches_hysteria_catalog_fingerprint_against_subscription() ->
     )
     result = RulesTransformer(rules).transform(payload)
     pool = next(item for item in result if item["remarks"] == "HY Pool")
-    assert pool["routing"]["balancers"][0]["selector"]
+    assert pool["routing"]["balancers"][0]["selector"] == [member_tag_prefix("hy-pool")]

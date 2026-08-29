@@ -21,7 +21,9 @@ _STRATEGY_MAP = {
 
 _OBSERVATORY_STRATEGIES = frozenset({"leastPing", "leastLoad"})
 
-_FAILED_SUFFIX = " - Failed"
+_XRAY_BALANCER_TAG = "balancer"
+_LOOPBACK_ADDRESSES = frozenset({"127.0.0.1", "localhost", "::1"})
+_PROBE_URL = "https://www.google.com/generate_204"
 
 
 def _as_config_list(payload: SubscriptionPayload) -> list[dict[str, Any]]:
@@ -167,13 +169,33 @@ def _log_balancer_resolution(balancer: BalancerRule, nodes: list[ProxyNode]) -> 
     )
 
 
-def _balancer_display_remarks(balancer: BalancerRule, all_nodes: list[ProxyNode]) -> str:
-    remarks = balancer.remarks or balancer.tag
-    if _balancer_members_incomplete(balancer, all_nodes):
-        _log_balancer_resolution(balancer, all_nodes)
-        if not remarks.endswith(_FAILED_SUFFIX):
-            remarks = f"{remarks}{_FAILED_SUFFIX}"
-    return remarks
+def _node_address(node: ProxyNode) -> str:
+    settings = node.outbound.get("settings", {})
+    if not isinstance(settings, dict):
+        return ""
+    return str(settings.get("address", "")).strip().lower()
+
+
+def _is_loopback_node(node: ProxyNode) -> bool:
+    return _node_address(node) in _LOOPBACK_ADDRESSES
+
+
+def member_tag_prefix(balancer_tag: str) -> str:
+    """Xray selector is prefix-match; 3x-ui 3.7.0 uses bal-{id}-."""
+    return f"bal-{_slugify(balancer_tag)}-"
+
+
+def _retag_pool_nodes(balancer: BalancerRule, nodes: list[ProxyNode]) -> list[ProxyNode]:
+    prefix = member_tag_prefix(balancer.tag)
+    used_tags: set[str] = set()
+    retagged: list[ProxyNode] = []
+    for node in nodes:
+        protocol = str(node.protocol or "other").strip().lower() or "other"
+        base = f"{prefix}{protocol}"
+        tag = _ensure_unique(base, used_tags)
+        used_tags.add(tag)
+        retagged.append(node.with_tag(tag))
+    return retagged
 
 
 def _node_balancer_map(
@@ -201,14 +223,61 @@ def _system_outbounds(template_config: dict[str, Any]) -> list[dict[str, Any]]:
     return system
 
 
-def _attach_observatory(config: dict[str, Any], selector: list[str]) -> None:
-    """leastPing/leastLoad в Xray требуют observatory — иначе core не стартует."""
-    config["observatory"] = {
-        "subjectSelector": selector,
-        "probeUrl": "https://www.google.com/generate_204",
-        "probeInterval": "30s",
-        "enableConcurrency": True,
+def _attach_burst_observatory(config: dict[str, Any], prefix: str) -> None:
+    """leastPing/leastLoad: 3x-ui 3.7.0 emits burstObservatory, not observatory."""
+    config.pop("observatory", None)
+    config["burstObservatory"] = {
+        "subjectSelector": [prefix],
+        "pingConfig": {
+            "destination": _PROBE_URL,
+            "interval": "1m",
+            "sampling": 2,
+            "timeout": "5s",
+            "httpMethod": "HEAD",
+        },
     }
+
+
+def _routing_for_balancer(
+    template_config: dict[str, Any],
+    *,
+    selector_prefix: str,
+    strategy_type: str,
+    fallback_tag: str,
+) -> dict[str, Any]:
+    base = template_config.get("routing")
+    routing: dict[str, Any] = copy.deepcopy(base) if isinstance(base, dict) else {}
+    rewritten: list[dict[str, Any]] = []
+    has_balancer_rule = False
+    for rule in routing.get("rules") or []:
+        if not isinstance(rule, dict):
+            continue
+        rule = copy.deepcopy(rule)
+        if rule.get("outboundTag") == "proxy":
+            rule.pop("outboundTag", None)
+            rule["balancerTag"] = _XRAY_BALANCER_TAG
+        if rule.get("balancerTag") == _XRAY_BALANCER_TAG:
+            has_balancer_rule = True
+        rewritten.append(rule)
+    if not has_balancer_rule:
+        rewritten.append(
+            {
+                "type": "field",
+                "network": "tcp,udp",
+                "balancerTag": _XRAY_BALANCER_TAG,
+            }
+        )
+    balancer_entry: dict[str, Any] = {
+        "tag": _XRAY_BALANCER_TAG,
+        "selector": [selector_prefix],
+        "strategy": {"type": strategy_type},
+    }
+    if fallback_tag:
+        balancer_entry["fallbackTag"] = fallback_tag
+    routing["balancers"] = [balancer_entry]
+    routing["rules"] = rewritten
+    routing.setdefault("domainStrategy", "AsIs")
+    return routing
 
 
 def _build_balancer_config(
@@ -217,33 +286,37 @@ def _build_balancer_config(
     balancer: BalancerRule,
     *,
     all_nodes: list[ProxyNode] | None = None,
-) -> dict[str, Any]:
-    config = copy.deepcopy(template_config)
-    proxy_outbounds = [copy.deepcopy(node.outbound) for node in nodes]
-    config["outbounds"] = proxy_outbounds + _system_outbounds(template_config)
-    config["remarks"] = _balancer_display_remarks(balancer, all_nodes or nodes)
+) -> dict[str, Any] | None:
+    usable = [node for node in nodes if not _is_loopback_node(node)]
+    retagged = _retag_pool_nodes(balancer, usable)
+    if not retagged:
+        _log_balancer_resolution(balancer, all_nodes or nodes)
+        return None
 
-    routing: dict[str, Any] = {}
-    selector = [node.tag for node in nodes]
+    config = copy.deepcopy(template_config)
+    proxy_outbounds = [copy.deepcopy(node.outbound) for node in retagged]
+    config["outbounds"] = proxy_outbounds + _system_outbounds(template_config)
+    config["remarks"] = balancer.remarks or balancer.tag
+    if _balancer_members_incomplete(balancer, all_nodes or nodes):
+        _log_balancer_resolution(balancer, all_nodes or nodes)
+
+    prefix = member_tag_prefix(balancer.tag)
     strategy_type = _STRATEGY_MAP.get(balancer.strategy, "roundRobin")
-    routing["balancers"] = [
-        {
-            "tag": balancer.tag,
-            "selector": selector,
-            "strategy": {"type": strategy_type},
-        }
-    ]
-    routing["domainStrategy"] = "AsIs"
-    routing["rules"] = [
-        {
-            "type": "field",
-            "network": "tcp,udp",
-            "balancerTag": balancer.tag,
-        }
-    ]
-    config["routing"] = routing
+    # Always set fallbackTag: if balancer dispatch fails (empty match, probe
+    # deadlock on iOS TUN), Xray sends traffic to the first real proxy instead
+    # of blackholing the tunnel.
+    fallback_tag = retagged[0].tag
+    config["routing"] = _routing_for_balancer(
+        template_config,
+        selector_prefix=prefix,
+        strategy_type=strategy_type,
+        fallback_tag=fallback_tag,
+    )
+    config.pop("observatory", None)
     if balancer.strategy in _OBSERVATORY_STRATEGIES:
-        _attach_observatory(config, selector)
+        _attach_burst_observatory(config, prefix)
+    else:
+        config.pop("burstObservatory", None)
     return config
 
 
@@ -254,7 +327,11 @@ def _balancer_pool_nodes(
     member_tags = set(_resolve_balancer_members(balancer, nodes))
     if not member_tags:
         return []
-    return [node for node in nodes if node.tag in member_tags]
+    return [
+        node
+        for node in nodes
+        if node.tag in member_tags and not _is_loopback_node(node)
+    ]
 
 
 def _node_hidden_as_standalone(
@@ -290,9 +367,12 @@ def _build_grouped_output(
             if not pool_nodes or node.tag not in {item.tag for item in pool_nodes}:
                 continue
             template = configs[pool_nodes[0].source_index]
-            result.append(
-                _build_balancer_config(template, pool_nodes, balancer, all_nodes=nodes)
+            built = _build_balancer_config(
+                template, pool_nodes, balancer, all_nodes=nodes
             )
+            if built is None:
+                continue
+            result.append(built)
             emitted_balancers.add(balancer.tag)
 
         if not _node_hidden_as_standalone(node, rules, nodes):
@@ -301,16 +381,7 @@ def _build_grouped_output(
     for balancer in rules.balancers:
         if balancer.tag in emitted_balancers:
             continue
-        if not _expected_balancer_fingerprints(balancer):
-            continue
-        if _resolve_balancer_members(balancer, nodes):
-            continue
-        template = configs[nodes[0].source_index] if nodes else configs[0]
-        result.insert(
-            0,
-            _build_balancer_config(template, [], balancer, all_nodes=nodes),
-        )
-        emitted_balancers.add(balancer.tag)
+        _log_balancer_resolution(balancer, nodes)
 
     return result
 
@@ -326,25 +397,28 @@ def _build_single_merged_config(
     config["remarks"] = rules.output.remarks
 
     balancers_json: list[dict[str, Any]] = []
-    observatory_selector: list[str] = []
+    observatory_prefixes: list[str] = []
     needs_observatory = False
     for balancer in rules.balancers:
-        selector = _resolve_balancer_members(balancer, nodes)
-        if not selector:
+        pool = _balancer_pool_nodes(balancer, nodes)
+        if not pool:
             continue
+        retagged = _retag_pool_nodes(balancer, pool)
+        if not retagged:
+            continue
+        prefix = member_tag_prefix(balancer.tag)
         strategy_type = _STRATEGY_MAP.get(balancer.strategy, "roundRobin")
-        balancers_json.append(
-            {
-                "tag": balancer.tag,
-                "selector": selector,
-                "strategy": {"type": strategy_type},
-            }
-        )
+        entry: dict[str, Any] = {
+            "tag": balancer.tag,
+            "selector": [prefix],
+            "strategy": {"type": strategy_type},
+            "fallbackTag": retagged[0].tag,
+        }
         if balancer.strategy in _OBSERVATORY_STRATEGIES:
             needs_observatory = True
-            for tag in selector:
-                if tag not in observatory_selector:
-                    observatory_selector.append(tag)
+            if prefix not in observatory_prefixes:
+                observatory_prefixes.append(prefix)
+        balancers_json.append(entry)
 
     default_balancer = rules.output.default_balancer or (
         balancers_json[0]["tag"] if balancers_json else ""
@@ -355,8 +429,13 @@ def _build_single_merged_config(
             {"type": "field", "network": "tcp,udp", "balancerTag": default_balancer}
         ]
     config["routing"] = routing
-    if needs_observatory and observatory_selector:
-        _attach_observatory(config, observatory_selector)
+    config.pop("observatory", None)
+    if needs_observatory and observatory_prefixes:
+        _attach_burst_observatory(config, observatory_prefixes[0])
+        if len(observatory_prefixes) > 1:
+            config["burstObservatory"]["subjectSelector"] = observatory_prefixes
+    else:
+        config.pop("burstObservatory", None)
     return config
 
 
@@ -385,9 +464,14 @@ class RulesTransformer(SubscriptionTransformer):
             return _build_grouped_output(configs, nodes, self._rules)
 
         if output_format == "array":
-            return [
-                _build_balancer_config(configs[node.source_index], [node], self._rules.balancers[0])
-                for node in nodes
-            ]
+            built_items: list[dict[str, Any]] = []
+            first_balancer = self._rules.balancers[0]
+            for node in nodes:
+                built = _build_balancer_config(
+                    configs[node.source_index], [node], first_balancer
+                )
+                if built is not None:
+                    built_items.append(built)
+            return built_items or payload
 
         return _build_single_merged_config(configs[0], nodes, self._rules)

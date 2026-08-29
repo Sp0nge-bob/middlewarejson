@@ -62,12 +62,31 @@ def test_group_balancer_applies_only_to_assigned_group(tmp_path: Path) -> None:
         item for item in premium_result if item["remarks"] == "NL+USA Balance"
     )
     selector = global_config["routing"]["balancers"][0]["selector"]
-    assert len(selector) == 2
-    assert nl_fp in selector
-    assert us_fp in selector
+    assert selector == ["bal-premium-pool-"]
+    assert global_config["routing"]["balancers"][0]["tag"] == "balancer"
+    proxies = [
+        outbound
+        for outbound in global_config["outbounds"]
+        if outbound.get("tag") not in ("direct", "block")
+        and outbound.get("protocol") not in ("freedom", "blackhole", "dns")
+    ]
+    assert len(proxies) == 2
+    assert {item["settings"]["address"] for item in proxies} == {
+        "node1.example.com",
+        "node5.example.com",
+    }
 
     for sub_id in ("client_b_sub_id12", "any_sub_id_12345"):
         result = service.transform(sub_id, configs)
         remarks = [item["remarks"] for item in result]
         assert "NL+USA Balance" not in remarks
-        assert len(result) == len(configs)
+        loopback_dropped = sum(
+            1
+            for item in configs
+            if any(
+                str((outbound.get("settings") or {}).get("address", "")).startswith("127.")
+                for outbound in item.get("outbounds", [])
+                if outbound.get("protocol") not in ("freedom", "blackhole", "dns")
+            )
+        )
+        assert len(result) == len(configs) - loopback_dropped
