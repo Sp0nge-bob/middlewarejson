@@ -86,12 +86,35 @@ def test_apply_ios_fix_makes_3xui_autoselect_ios_safe() -> None:
     assert result["inbounds"][0]["tag"] == "socks"
     assert "burstObservatory" not in result
     assert "observatory" not in result
-    balancer = result["routing"]["balancers"][0]
-    assert balancer["strategy"] == {"type": "roundRobin"}
-    assert balancer["selector"] == ["bal-3-"]
-    assert balancer["fallbackTag"] == "bal-3-vless"
-    assert result["outbounds"][0]["tag"] == "bal-3-vless"
+    assert "balancers" not in result["routing"]
+    assert result["outbounds"][0]["tag"] == "proxy"
+    assert result["outbounds"][0]["settings"]["address"] == "n1"
+    assert result["routing"]["rules"][0]["outboundTag"] == "proxy"
+    assert "balancerTag" not in result["routing"]["rules"][0]
     assert result["remarks"] == "🇪🇺 Автовыбор"
+
+
+def test_apply_ios_fix_strips_stats_and_dns_tag() -> None:
+    payload = {
+        "remarks": "NL",
+        "dns": {"tag": "dns_out", "servers": ["8.8.8.8"]},
+        "stats": {},
+        "policy": {
+            "system": {
+                "statsOutboundUplink": True,
+                "statsOutboundDownlink": True,
+            }
+        },
+        "inbounds": [{"protocol": "socks", "tag": "socks"}],
+        "outbounds": [{"protocol": "vless", "tag": "proxy"}],
+        "routing": {"rules": [{"type": "field", "network": "tcp,udp", "outboundTag": "proxy"}]},
+    }
+    result = apply_ios_fix(payload)
+    assert "stats" not in result
+    assert "tag" not in result["dns"]
+    assert result["dns"]["servers"] == ["8.8.8.8"]
+    system = (result.get("policy") or {}).get("system") or {}
+    assert "statsOutboundUplink" not in system
 
 
 def test_apply_ios_fix_strips_fakedns_and_nested_tls() -> None:

@@ -233,7 +233,7 @@ def _transform_mode_label(mode: str) -> str:
     if mode == "rules":
         return "rules — балансировщики и трансформации"
     if mode == "ios-fix":
-        return "ios-fix — mixed→socks, пул 3x-ui без observatory"
+        return "ios-fix — mixed→socks, Автовыбор как обычный сервер"
     return "passthrough — подписка без изменений"
 
 
@@ -255,7 +255,7 @@ def _do_edit_transform_mode(repo: CatalogRepository) -> None:
     print_field("Текущий режим", _transform_mode_label(current))
     print_menu_item(1, "rules — балансировщики и трансформации")
     print_menu_item(2, "passthrough — подписка без изменений")
-    print_menu_item(3, "ios-fix — socks вместо mixed, Автовыбор 3x-ui без ping")
+    print_menu_item(3, "ios-fix — socks вместо mixed, Автовыбор без Xray balancer")
     print_menu_item(0, "Назад")
 
     choice = prompt_line("Выбор [0 — назад]")
