@@ -41,7 +41,7 @@ def test_apply_ios_fix_changes_only_first_mixed() -> None:
     result = apply_ios_fix(payload)
 
     assert result[0]["inbounds"][0]["protocol"] == "socks"
-    assert result[0]["inbounds"][0]["tag"] == "mixed"
+    assert result[0]["inbounds"][0]["tag"] == "socks"
     assert result[0]["inbounds"][0]["port"] == 10808
     assert result[0]["inbounds"][1]["protocol"] == "http"
     assert result[0]["dns"] == original[0]["dns"]
@@ -83,6 +83,7 @@ def test_apply_ios_fix_makes_3xui_autoselect_ios_safe() -> None:
     }
     result = apply_ios_fix(payload)
     assert result["inbounds"][0]["protocol"] == "socks"
+    assert result["inbounds"][0]["tag"] == "socks"
     assert "burstObservatory" not in result
     assert "observatory" not in result
     balancer = result["routing"]["balancers"][0]
@@ -91,6 +92,41 @@ def test_apply_ios_fix_makes_3xui_autoselect_ios_safe() -> None:
     assert balancer["fallbackTag"] == "bal-3-vless"
     assert result["outbounds"][0]["tag"] == "bal-3-vless"
     assert result["remarks"] == "🇪🇺 Автовыбор"
+
+
+def test_apply_ios_fix_strips_fakedns_and_nested_tls() -> None:
+    payload = {
+        "remarks": "NL",
+        "inbounds": [
+            {
+                "protocol": "socks",
+                "tag": "mixed",
+                "sniffing": {"enabled": True, "destOverride": ["http", "tls", "quic", "fakedns"]},
+            }
+        ],
+        "outbounds": [
+            {
+                "protocol": "vless",
+                "tag": "proxy",
+                "streamSettings": {
+                    "network": "ws",
+                    "security": "tls",
+                    "tlsSettings": {
+                        "fingerprint": "random",
+                        "settings": {"verifyPeerCertByName": "0"},
+                    },
+                    "wsSettings": {"path": "/ws", "heartbeatPeriod": 0},
+                },
+            }
+        ],
+    }
+    result = apply_ios_fix(payload)
+    assert result["inbounds"][0]["tag"] == "socks"
+    assert "fakedns" not in result["inbounds"][0]["sniffing"]["destOverride"]
+    tls = result["outbounds"][0]["streamSettings"]["tlsSettings"]
+    assert "settings" not in tls
+    assert tls["fingerprint"] == "random"
+    assert "heartbeatPeriod" not in result["outbounds"][0]["streamSettings"]["wsSettings"]
 
 
 def test_apply_ios_fix_leaves_socks_first_unchanged() -> None:
