@@ -86,15 +86,60 @@ def test_apply_ios_fix_makes_3xui_autoselect_ios_safe() -> None:
     assert result["inbounds"][0]["tag"] == "socks"
     assert "burstObservatory" not in result
     assert "observatory" not in result
-    assert "balancers" not in result["routing"]
-    assert result["outbounds"][0]["tag"] == "proxy"
-    assert result["outbounds"][0]["settings"]["address"] == "n1"
-    assert result["routing"]["rules"][0]["outboundTag"] == "proxy"
-    assert "balancerTag" not in result["routing"]["rules"][0]
+    balancer = result["routing"]["balancers"][0]
+    assert balancer["tag"] == "balancer"
+    assert balancer["selector"] == ["bal-3-"]
+    assert balancer["strategy"] == {"type": "roundRobin"}
+    assert "fallbackTag" not in balancer
+    assert [item["tag"] for item in result["outbounds"]] == [
+        "bal-3-vless",
+        "bal-3-vless-2",
+        "direct",
+    ]
+    assert result["routing"]["rules"][0]["balancerTag"] == "balancer"
+    assert "outboundTag" not in result["routing"]["rules"][0]
     assert result["remarks"] == "🇪🇺 Автовыбор"
 
 
-def test_apply_ios_fix_strips_stats_and_dns_tag() -> None:
+def test_apply_ios_fix_drops_fallback_tag_on_round_robin() -> None:
+    """HAPP 4.11: roundRobin + fallbackTag without observatory →
+    «core: not all dependencies are resolved» (Xray RequireFeatures)."""
+    payload = {
+        "remarks": "🇪🇺 Автовыбор",
+        "dns": {"tag": "dns_out", "servers": ["8.8.8.8"]},
+        "stats": {},
+        "inbounds": [{"protocol": "socks", "tag": "socks"}],
+        "outbounds": [
+            {"protocol": "vless", "tag": "bal-3-vless", "settings": {"address": "n1"}},
+            {"protocol": "vless", "tag": "bal-3-vless-2", "settings": {"address": "n2"}},
+            {"protocol": "freedom", "tag": "direct"},
+        ],
+        "routing": {
+            "balancers": [
+                {
+                    "tag": "balancer",
+                    "selector": ["bal-3-vless"],
+                    "strategy": {"type": "roundRobin"},
+                    "fallbackTag": "bal-3-vless",
+                }
+            ],
+            "rules": [{"type": "field", "network": "tcp,udp", "balancerTag": "balancer"}],
+            "observatory": {"subjectSelector": ["bal-3-vless"]},
+        },
+    }
+    result = apply_ios_fix(payload)
+    balancer = result["routing"]["balancers"][0]
+    assert balancer["strategy"] == {"type": "roundRobin"}
+    assert "fallbackTag" not in balancer
+    assert "observatory" not in result
+    assert "observatory" not in result["routing"]
+    assert len(result["outbounds"]) == 3
+    assert result["stats"] == {}
+    assert result["dns"]["tag"] == "dns_out"
+    assert result["routing"]["rules"][0]["balancerTag"] == "balancer"
+
+
+def test_apply_ios_fix_leaves_stats_and_dns_on_ordinary_proxy() -> None:
     payload = {
         "remarks": "NL",
         "dns": {"tag": "dns_out", "servers": ["8.8.8.8"]},
@@ -110,11 +155,12 @@ def test_apply_ios_fix_strips_stats_and_dns_tag() -> None:
         "routing": {"rules": [{"type": "field", "network": "tcp,udp", "outboundTag": "proxy"}]},
     }
     result = apply_ios_fix(payload)
-    assert "stats" not in result
-    assert "tag" not in result["dns"]
+    assert result["stats"] == {}
+    assert result["dns"]["tag"] == "dns_out"
     assert result["dns"]["servers"] == ["8.8.8.8"]
     system = (result.get("policy") or {}).get("system") or {}
-    assert "statsOutboundUplink" not in system
+    assert system.get("statsOutboundUplink") is True
+    assert result["routing"]["rules"][0]["outboundTag"] == "proxy"
 
 
 def test_apply_ios_fix_strips_fakedns_and_nested_tls() -> None:

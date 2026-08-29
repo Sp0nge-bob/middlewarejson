@@ -30,7 +30,7 @@
 
 | Переменная | По умолчанию | Описание |
 |------------|--------------|----------|
-| `TRANSFORM_MODE` | `passthrough` | `passthrough` — без изменений; `ios-fix` — первый inbound `mixed` → `socks` и пул 3x-ui (Автовыбор) без observatory; `rules` — балансировщики из SQLite |
+| `TRANSFORM_MODE` | `passthrough` | `passthrough` — без изменений; `ios-fix` — первый inbound `mixed` → `socks`, пул 3x-ui (Автовыбор) остаётся балансером: `roundRobin` без `fallbackTag` и observatory (парсер Xray, 3x-ui#2724); `rules` — балансировщики из SQLite |
 | `DB_PATH` | `data/middleware.db` | SQLite: каталог, группы, балансировщики |
 
 ### Panel API (3x-ui)

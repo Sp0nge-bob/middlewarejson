@@ -155,6 +155,52 @@ def _check_config(index: int, config: dict[str, Any]) -> list[dict[str, str]]:
                 }
             )
 
+    routing = config.get("routing")
+    balancers = routing.get("balancers") if isinstance(routing, dict) else None
+    if isinstance(balancers, list):
+        has_observatory = "observatory" in config or "burstObservatory" in config
+        if isinstance(routing, dict):
+            has_observatory = has_observatory or "observatory" in routing or "burstObservatory" in routing
+        for b_index, balancer in enumerate(balancers):
+            if not isinstance(balancer, dict):
+                continue
+            strategy = balancer.get("strategy")
+            stype = ""
+            if isinstance(strategy, dict):
+                stype = str(strategy.get("type") or "")
+            elif isinstance(strategy, str):
+                stype = strategy
+            stype_l = stype.lower()
+            fallback = str(balancer.get("fallbackTag") or "").strip()
+            if fallback and stype_l in {"", "random", "roundrobin"}:
+                issues.append(
+                    {
+                        "severity": "critical",
+                        "field": f"routing.balancers[{b_index}].fallbackTag",
+                        "reason": (
+                            f'{stype or "random"} + fallbackTag="{fallback}" без observatory — '
+                            "Xray RequireFeatures(Observatory), "
+                            "«core: not all dependencies are resolved» (3x-ui#2724)"
+                        )
+                        if not has_observatory
+                        else (
+                            f'{stype or "random"} + fallbackTag регистрирует Observatory '
+                            "(Xray-core balancing.go InjectContext)"
+                        ),
+                    }
+                )
+            if stype_l in {"leastping", "leastload"}:
+                issues.append(
+                    {
+                        "severity": "high",
+                        "field": f"routing.balancers[{b_index}].strategy.type",
+                        "reason": (
+                            f"{stype} шлёт observatory-пробы через iOS TUN "
+                            "и глушит интернет (3x-ui sub balancer)"
+                        ),
+                    }
+                )
+
     return issues
 
 
