@@ -52,6 +52,19 @@ def test_upstream_404(client: TestClient) -> None:
     assert response.text == ""
 
 
+def test_head_invalid_json_is_502_not_200(client: TestClient) -> None:
+    mock_get = AsyncMock(return_value=_mock_upstream_response(status_code=200, text="not-json"))
+    mock_client = AsyncMock()
+    mock_client.get = mock_get
+    mock_client.__aenter__.return_value = mock_client
+    mock_client.__aexit__.return_value = None
+
+    with patch("app.services.upstream.httpx.AsyncClient", return_value=mock_client):
+        response = client.head(f"{JSON_SUB_PATH}/abcd1234efgh5678")
+
+    assert response.status_code == 502
+
+
 def test_passthrough_json_and_headers(client: TestClient) -> None:
     mock_get = AsyncMock(
         return_value=_mock_upstream_response(

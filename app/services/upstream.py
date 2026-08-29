@@ -8,6 +8,8 @@ from app.config import Settings
 logger = logging.getLogger(__name__)
 
 PASSTHROUGH_REQUEST_HEADERS = ("user-agent", "accept", "accept-language")
+JSON_CLIENT_USER_AGENT = "Happ/1.0"
+_TOOL_USER_AGENTS = ("python-httpx", "python-requests", "aiohttp")
 PASSTHROUGH_RESPONSE_HEADERS = (
     "subscription-userinfo",
     "profile-update-interval",
@@ -31,6 +33,28 @@ class UpstreamError(Exception):
     pass
 
 
+def _headers_for_upstream(request_headers: dict[str, str] | None) -> dict[str, str]:
+    """3x-ui JSON path can switch format by User-Agent; keep Happ/curl, drop httpx."""
+    headers: dict[str, str] = {"Accept": "application/json"}
+    incoming_ua = ""
+    for key, value in (request_headers or {}).items():
+        lowered = key.lower()
+        if lowered not in PASSTHROUGH_REQUEST_HEADERS:
+            continue
+        if lowered == "user-agent":
+            incoming_ua = value
+            continue
+        if lowered == "accept":
+            continue
+        headers[key] = value
+    ua_l = incoming_ua.lower()
+    if incoming_ua and not any(marker in ua_l for marker in _TOOL_USER_AGENTS):
+        headers["User-Agent"] = incoming_ua
+    else:
+        headers["User-Agent"] = JSON_CLIENT_USER_AGENT
+    return headers
+
+
 class UpstreamClient:
     def __init__(self, settings: Settings, *, base_url: str | None = None) -> None:
         self._settings = settings
@@ -51,11 +75,7 @@ class UpstreamClient:
         if query_string:
             url = f"{url}?{query_string}"
 
-        headers = {
-            key: value
-            for key, value in (request_headers or {}).items()
-            if key.lower() in PASSTHROUGH_REQUEST_HEADERS
-        }
+        headers = _headers_for_upstream(request_headers)
         if self._settings.upstream_host_header:
             headers["Host"] = self._settings.upstream_host_header
 

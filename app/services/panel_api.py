@@ -33,9 +33,12 @@ def resolve_transform_mode(
     settings: Settings,
     repository_value: str | None,
 ) -> str:
-    if repository_value and repository_value.strip():
-        return normalize_transform_mode(repository_value)
-    return normalize_transform_mode(settings.transform_mode)
+    raw = repository_value if repository_value and repository_value.strip() else settings.transform_mode
+    try:
+        return normalize_transform_mode(raw)
+    except ValueError:
+        logger.warning("unknown TRANSFORM_MODE %r, falling back to passthrough", raw)
+        return "passthrough"
 
 
 def resolve_panel_token(settings: Settings, repository_token: str | None) -> str:

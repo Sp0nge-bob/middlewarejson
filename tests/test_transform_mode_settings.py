@@ -30,6 +30,11 @@ def test_resolve_falls_back_to_env_when_db_empty() -> None:
     assert resolve_transform_mode(settings, None) == "rules"
 
 
+def test_resolve_unknown_mode_falls_back_to_passthrough() -> None:
+    settings = Settings(transform_mode="passthrough")
+    assert resolve_transform_mode(settings, "ios-fix-typo") == "passthrough"
+
+
 def test_transform_service_uses_database_mode_without_restart() -> None:
     import json
 

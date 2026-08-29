@@ -228,20 +228,24 @@ def _warn_profiles(rows: list[dict[str, Any]]) -> None:
             print_info(f"[{row['index']}] {row['remarks']}: нет fallbackTag")
 
 
-def _fetch_from_agent(sub_id: str) -> tuple[int, Any] | None:
+def _fetch_from_agent(sub_id: str) -> tuple[int, Any, str] | None:
     path = settings.resolved_agent_json_path()
     url = f"http://{settings.agent_host}:{settings.agent_port}{path}/{sub_id}"
     try:
         with httpx.Client(timeout=settings.request_timeout_sec) as client:
-            response = client.get(url)
+            response = client.get(
+                url,
+                headers={"Accept": "application/json", "User-Agent": "Happ/1.0"},
+            )
     except httpx.HTTPError:
         return None
+    error_text = (response.text or "").strip().replace("\n", " ")[:200]
     if response.status_code != 200:
-        return response.status_code, None
+        return response.status_code, None, error_text
     try:
-        return 200, response.json()
+        return 200, response.json(), ""
     except ValueError:
-        return 200, None
+        return 200, None, error_text or "ответ не JSON"
 
 
 async def _fetch_upstream(sub_id: str) -> tuple[int, str]:
@@ -284,12 +288,17 @@ def preview_subscription(raw_ref: str) -> None:
     source = ""
     agent = _fetch_from_agent(sub_id)
     if agent is not None:
-        status, body = agent
+        status, body, error_text = agent
         if status == 200 and body is not None:
             payload = body
             source = "агент (как получит телефон)"
         else:
-            print_warning(f"Агент ответил HTTP {status}")
+            detail = f" — {error_text}" if error_text else ""
+            print_warning(f"Агент ответил HTTP {status}{detail}")
+            print_info(
+                "HEAD (curl -sI) не парсит тело и может быть 200, "
+                "а GET падает. Смотрите: journalctl -u middlewarejson -n 50"
+            )
 
     if payload is None:
         try:

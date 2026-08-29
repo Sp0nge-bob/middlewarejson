@@ -55,27 +55,34 @@ def build_subscription_router(json_path: str) -> APIRouter:
         if result.status_code != 200:
             return PlainTextResponse(status_code=result.status_code, content=result.body)
 
-        if request.method == "HEAD":
-            return Response(status_code=200, headers=result.headers)
-
         try:
             payload: SubscriptionPayload = json.loads(result.body)
             validate_payload(payload)
-            transformed = request.app.state.transform_service.transform(sub_id, payload)
-            body = _serialize_payload(transformed)
         except (json.JSONDecodeError, ValueError, TypeError) as exc:
-            logger.warning("invalid upstream json for sub_id=%s: %s", sub_id, exc)
+            snippet = result.body.strip().replace("\n", " ")[:180]
+            logger.warning(
+                "invalid upstream json for sub_id=%s: %s; body=%s",
+                sub_id,
+                exc,
+                snippet or "(empty)",
+            )
             return PlainTextResponse(status_code=502, content="invalid upstream json")
 
-        return PlainTextResponse(
-            status_code=200,
-            content=body,
-            headers={
-                **result.headers,
-                "Content-Type": "application/json; charset=utf-8",
-                "Cache-Control": "no-store",
-            },
-        )
+        try:
+            transformed = request.app.state.transform_service.transform(sub_id, payload)
+            body = _serialize_payload(transformed)
+        except Exception as exc:
+            logger.exception("transform failed for sub_id=%s: %s", sub_id, exc)
+            return PlainTextResponse(status_code=500, content="transform failed")
+
+        headers = {
+            **result.headers,
+            "Content-Type": "application/json; charset=utf-8",
+            "Cache-Control": "no-store",
+        }
+        if request.method == "HEAD":
+            return Response(status_code=200, headers=headers)
+        return PlainTextResponse(status_code=200, content=body, headers=headers)
 
     @router.get("/health")
     async def health() -> JSONResponse:
