@@ -49,6 +49,50 @@ def test_apply_ios_fix_changes_only_first_mixed() -> None:
     assert original[0]["inbounds"][0]["protocol"] == "mixed"
 
 
+def test_apply_ios_fix_makes_3xui_autoselect_ios_safe() -> None:
+    payload = {
+        "remarks": "🇪🇺 Автовыбор",
+        "inbounds": [
+            {"port": 10808, "protocol": "mixed", "tag": "mixed"},
+            {"port": 10809, "protocol": "http", "tag": "http"},
+        ],
+        "outbounds": [
+            {"protocol": "vless", "tag": "bal-3-vless", "settings": {"address": "n1"}},
+            {"protocol": "vless", "tag": "bal-3-vless-2", "settings": {"address": "n2"}},
+            {"protocol": "freedom", "tag": "direct"},
+        ],
+        "routing": {
+            "domainStrategy": "AsIs",
+            "balancers": [
+                {
+                    "tag": "balancer",
+                    "selector": ["bal-3-"],
+                    "strategy": {"type": "leastPing"},
+                    "fallbackTag": "bal-3-vless",
+                }
+            ],
+            "rules": [
+                {"type": "field", "network": "tcp,udp", "balancerTag": "balancer"},
+            ],
+        },
+        "burstObservatory": {
+            "subjectSelector": ["bal-3-"],
+            "pingConfig": {"destination": "https://www.google.com/generate_204"},
+        },
+        "observatory": {"subjectSelector": ["bal-3-"]},
+    }
+    result = apply_ios_fix(payload)
+    assert result["inbounds"][0]["protocol"] == "socks"
+    assert "burstObservatory" not in result
+    assert "observatory" not in result
+    balancer = result["routing"]["balancers"][0]
+    assert balancer["strategy"] == {"type": "roundRobin"}
+    assert balancer["selector"] == ["bal-3-"]
+    assert balancer["fallbackTag"] == "bal-3-vless"
+    assert result["outbounds"][0]["tag"] == "bal-3-vless"
+    assert result["remarks"] == "🇪🇺 Автовыбор"
+
+
 def test_apply_ios_fix_leaves_socks_first_unchanged() -> None:
     payload = {
         "remarks": "ok",
