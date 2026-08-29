@@ -4,7 +4,7 @@
 2. Keep the 3x-ui balancer type; only rewrite JSON so LibXray starts on iOS:
    - leastPing  → observatory (not burst), fallbackTag, gstatic, concurrency
    - leastLoad  → burstObservatory, connectivity="", fallbackTag, gstatic
-   - roundRobin / random → roundRobin, no fallbackTag, no observatory
+   - roundRobin / random → same type, no fallbackTag, no observatory
      (3x-ui#2724: fallbackTag registers Observatory)
    Ordinary single-proxy profiles are not rewritten.
 3. Strip sniffing fakedns (no fakedns inbound in 3x-ui JSON).
@@ -23,6 +23,7 @@ _BURST_TIMEOUT = "5s"
 _BURST_SAMPLING = 2
 _LEAST_PING_TYPES = frozenset({"leastping", "least_ping"})
 _LEAST_LOAD_TYPES = frozenset({"leastload", "least_load"})
+_ROUND_ROBIN_TYPES = frozenset({"roundrobin", "round_robin"})
 _SYSTEM_PROTOCOLS = frozenset({"freedom", "blackhole", "dns"})
 
 
@@ -243,8 +244,11 @@ def _fix_panel_balancer(config: dict[str, Any]) -> None:
             rewritten.append(entry)
             continue
 
-        # roundRobin / random / unknown: fallbackTag registers Observatory.
-        entry["strategy"] = {"type": "roundRobin"}
+        # random / roundRobin: fallbackTag registers Observatory (3x-ui#2724).
+        if stype in _ROUND_ROBIN_TYPES:
+            entry["strategy"] = {"type": "roundRobin"}
+        else:
+            entry["strategy"] = {"type": "random"}
         entry.pop("fallbackTag", None)
         rewritten.append(entry)
 

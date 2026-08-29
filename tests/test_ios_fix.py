@@ -262,7 +262,7 @@ def test_apply_ios_fix_keeps_leastload_with_burst() -> None:
     assert result["dns"]["tag"] == "dns_out"
 
 
-def test_apply_ios_fix_maps_random_to_round_robin() -> None:
+def test_apply_ios_fix_keeps_random_drops_fallback() -> None:
     payload = {
         "inbounds": [{"protocol": "socks", "tag": "socks"}],
         "outbounds": [{"protocol": "vless", "tag": "bal-3-vless"}],
@@ -279,7 +279,7 @@ def test_apply_ios_fix_maps_random_to_round_robin() -> None:
         "burstObservatory": {"subjectSelector": ["bal-3-"]},
     }
     result = apply_ios_fix(payload)
-    assert result["routing"]["balancers"][0]["strategy"] == {"type": "roundRobin"}
+    assert result["routing"]["balancers"][0]["strategy"] == {"type": "random"}
     assert "fallbackTag" not in result["routing"]["balancers"][0]
     assert "observatory" not in result
     assert "burstObservatory" not in result

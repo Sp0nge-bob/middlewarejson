@@ -30,7 +30,7 @@
 
 | Переменная | По умолчанию | Описание |
 |------------|--------------|----------|
-| `TRANSFORM_MODE` | `passthrough` | `passthrough` — без изменений; `ios-fix` — `mixed` → `socks`, балансер 3x-ui как есть: leastPing+observatory, leastLoad+burstObservatory (без connectivity), roundRobin без fallbackTag; `rules` — балансировщики из SQLite |
+| `TRANSFORM_MODE` | `passthrough` | `passthrough` — без изменений; `ios-fix` — `mixed` → `socks`, балансер 3x-ui как есть: leastPing+observatory, leastLoad+burstObservatory (без connectivity), roundRobin/random без fallbackTag; `rules` — балансировщики из SQLite |
 | `DB_PATH` | `data/middleware.db` | SQLite: каталог, группы, балансировщики |
 
 ### Panel API (3x-ui)
