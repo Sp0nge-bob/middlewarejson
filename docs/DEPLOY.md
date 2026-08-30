@@ -24,7 +24,7 @@ chmod 600 .env
 mkdir -p data
 ```
 
-Установите `TRANSFORM_MODE=rules` в `.env`, если нужны балансировщики.
+`TRANSFORM_MODE=ios-fix` — режим по умолчанию (совместимость HAPP iOS).
 
 ## 2. Первичная настройка через CLI
 
@@ -33,16 +33,9 @@ source .venv/bin/activate
 python -m app.cli
 ```
 
-Рекомендуемый порядок:
-
-1. **П. 1** — настройки панели (URL, web base path, token), если не всё в `.env`
-2. **П. 3** — проверка Panel API
-3. **П. 9** — синхронизация каталога и групп
-4. **П. 8** — балансировщики (при `TRANSFORM_MODE=rules`)
-5. **П. 10** — ручной запуск для проверки (`curl http://127.0.0.1:8080/health`)
-6. **П. 5** — установка systemd
-
-Или из командной строки:
+1. Проверьте upstream в `.env` (`UPSTREAM_BASE_URL` = sub-сервер 3x-ui)
+2. Превью подписки
+3. Ручной запуск / systemd
 
 ```bash
 python -m app.cli service install --start
@@ -59,15 +52,13 @@ python -m app.cli service install --start
 loginctl enable-linger $USER
 ```
 
-CLI подскажет эту команду после установки.
-
 ## 3. Nginx
 
 Фрагмент для существующего `server { listen 443 ssl; ... }`:
 
 ```nginx
 location <AGENT_JSON_PATH>/ {
-    proxy_pass http://127.0.0.1:8080;   # порт = AGENT_PORT из .env (по умолчанию 8080)
+    proxy_pass http://127.0.0.1:8080;   # порт = AGENT_PORT из .env
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
@@ -84,15 +75,11 @@ location <AGENT_JSON_PATH>/ {
 
 ## 4. Управление службой
 
-Через CLI (п. 4 в меню) или Typer:
-
 ```bash
 python -m app.cli service status
 python -m app.cli service start
 python -m app.cli service restart
 ```
-
-Прямо через systemctl (user unit):
 
 ```bash
 systemctl --user status middlewarejson
@@ -107,7 +94,6 @@ journalctl --user -u middlewarejson -f
 ```bash
 chmod +x deploy/update.sh
 ./deploy/update.sh
-# или: export APP_DIR=/path/to/project && ./deploy/update.sh
 ```
 
 Или вручную:
@@ -117,23 +103,16 @@ cd /opt/middlewarejson
 git pull
 source .venv/bin/activate
 pip install -r requirements.txt -q
-systemctl --user restart middlewarejson   # или systemctl restart
+systemctl --user restart middlewarejson
 ```
 
 После изменения `.env` всегда перезапускайте службу.
 
-## 6. Ресурсы (1 GB VPS)
-
-- Агент: ~50–80 MB RAM в покое
-- SQLite: файл в `data/`, бэкапьте вместе с `.env`
-- Синхронизация по расписанию — лёгкая; при проблемах увеличьте `PANEL_SYNC_INTERVAL`
-
-## 7. Чеклист перед открытым доступом
+## 6. Чеклист
 
 - [ ] `.env` не в git, права `600`
-- [ ] Panel API token ротирован после любых утечек
 - [ ] `UPSTREAM_BASE_URL` — sub-сервер, не панель
-- [ ] nginx проксирует только ваш `AGENT_JSON_PATH` (обычно = `UPSTREAM_JSON_PATH`)
-- [ ] `TRANSFORM_MODE=rules` если нужны балансировщики
+- [ ] nginx проксирует `http://127.0.0.1:<AGENT_PORT>` (не https)
+- [ ] `TRANSFORM_MODE=ios-fix`
 - [ ] `/health` отвечает через loopback
-- [ ] Тестовая подписка в HAPP открывается и содержит ожидаемые профили
+- [ ] JSON-подписка в HAPP на iPhone открывается, Автовыбор — пул 3x-ui

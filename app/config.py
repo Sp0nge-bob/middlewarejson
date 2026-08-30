@@ -37,36 +37,12 @@ class Settings(BaseSettings):
     agent_host: str = Field(default="127.0.0.1", validation_alias="AGENT_HOST")
     agent_port: int = Field(default=8080, validation_alias="AGENT_PORT")
     transform_mode: str = Field(
-        default="passthrough",
+        default="ios-fix",
         validation_alias="TRANSFORM_MODE",
     )
     db_path: str = Field(
         default="data/middleware.db",
         validation_alias="DB_PATH",
-    )
-    panel_api_base_url: str = Field(
-        default="",
-        validation_alias="PANEL_API_BASE_URL",
-    )
-    panel_web_base_path: str = Field(
-        default="",
-        validation_alias="PANEL_WEB_BASE_PATH",
-    )
-    panel_api_token: str = Field(
-        default="",
-        validation_alias="PANEL_API_TOKEN",
-    )
-    panel_verify_ssl: bool | None = Field(
-        default=None,
-        validation_alias="PANEL_VERIFY_SSL",
-    )
-    panel_sync_on_startup: bool = Field(
-        default=True,
-        validation_alias="PANEL_SYNC_ON_STARTUP",
-    )
-    panel_sync_interval: str = Field(
-        default="24h",
-        validation_alias="PANEL_SYNC_INTERVAL",
     )
 
     def resolved_agent_json_path(self) -> str:
@@ -75,13 +51,8 @@ class Settings(BaseSettings):
             return explicit.rstrip("/")
         return self.upstream_json_path.rstrip("/")
 
-    def resolved_panel_base_url(self) -> str:
-        return (self.panel_api_base_url or self.upstream_base_url).rstrip("/")
-
-    def resolved_panel_verify_ssl(self) -> bool:
-        if self.panel_verify_ssl is not None:
-            return self.panel_verify_ssl
-        return self.upstream_verify_ssl
+    def resolved_upstream_base_url(self) -> str:
+        return self.upstream_base_url.strip().rstrip("/")
 
 
 settings = Settings()

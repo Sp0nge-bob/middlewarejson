@@ -4,14 +4,11 @@ import logging
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 
-from app.db.database import Database
-from app.db.repository import CatalogRepository
 from app.models.subscription import (
     SubscriptionPayload,
     try_load_json_subscription,
     validate_sub_id,
 )
-from app.services.panel_api import PANEL_API_BASE_URL_KEY, resolve_upstream_base_url
 from app.services.upstream import UpstreamClient, UpstreamError
 
 logger = logging.getLogger(__name__)
@@ -39,12 +36,7 @@ def build_subscription_router(json_path: str) -> APIRouter:
             return PlainTextResponse(status_code=400, content="invalid sub_id")
 
         settings = request.app.state.settings
-        repo = CatalogRepository(Database(settings.db_path))
-        upstream_base = resolve_upstream_base_url(
-            settings,
-            repo.get_setting(PANEL_API_BASE_URL_KEY),
-        )
-        upstream = UpstreamClient(settings, base_url=upstream_base)
+        upstream = UpstreamClient(settings, base_url=settings.resolved_upstream_base_url())
         query_string = request.url.query
 
         try:

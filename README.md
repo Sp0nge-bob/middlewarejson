@@ -1,26 +1,22 @@
 # middlewarejson
 
-Middleware между VPN-клиентами (HAPP и др.) и панелью **3x-ui**. Проксирует JSON-подписки по настраиваемому пути (`UPSTREAM_JSON_PATH`), сохраняет заголовки upstream и применяет трансформации: балансировщики по группам клиентов, теги, фильтры.
+Прослойка между VPN-клиентами (HAPP и др.) и панелью **3x-ui**. Проксирует JSON-подписки, правит их для iOS/HAPP и пропускает base64 без изменений.
 
-**English:** JSON subscription proxy and transform layer for 3x-ui — passthrough or rules-based balancers per client group.
-
-## Rust-версия
-
-Порт на Rust с паритетом функций и совместимостью с `data/middleware.db` и `.env`: [middlewarejson-rust](https://github.com/Sp0nge-bob/middlewarejson-rust).
+Балансировщики теперь в 3x-ui — скрипт их не собирает.
 
 ## Возможности
 
-- **Прозрачный прокси** — relay JSON без изменений (`TRANSFORM_MODE=passthrough`)
-- **Балансировщики** — объединение нескольких инбаундов в один профиль HAPP по группе клиента
-- **Синхронизация с панелью** — каталог инбаундов и группы клиентов через Panel API (только GET)
-- **CLI** — интерактивное меню на русском: настройки, синхронизация, балансировщики, systemd
+- **JSON-прокси** — relay подписки 3x-ui с заголовками (`Subscription-Userinfo` и др.)
+- **ios-fix** — `mixed` → `socks`, балансер панели под LibXray iOS (leastPing / leastLoad / roundRobin / random)
+- **base64 навылет** — обычная подписка 3x-ui не трогается
+- **CLI** — режим, превью подписки, systemd
 - **Systemd** — установка и управление службой из CLI
 
 ## Требования
 
 - Python 3.11+
 - Linux (для production и systemd; разработка возможна на Windows)
-- Панель 3x-ui с JSON-подписками и Panel API token
+- Панель 3x-ui с JSON-подписками
 
 ## Быстрый старт
 
@@ -47,14 +43,11 @@ curl -s http://127.0.0.1:8080/health
 
 ## Важно: upstream ≠ панель
 
-Частая ошибка — указать в `UPSTREAM_BASE_URL` URL **панели** вместо **sub-сервера** подписок.
+`UPSTREAM_BASE_URL` — это **sub-сервер** подписок, не URL панели.
 
 | Что | Порт / путь | Переменные |
 |-----|-------------|------------|
-| JSON-подписка (upstream) | Отдельный порт (часто `2096`), **без** web base path | `UPSTREAM_BASE_URL`, `UPSTREAM_JSON_PATH` |
-| Panel API | Порт панели + web base path | `PANEL_API_BASE_URL`, `PANEL_WEB_BASE_PATH`, `PANEL_API_TOKEN` |
-
-Скопируйте JSON URL из карточки клиента в 3x-ui и разбейте на base + path:
+| JSON-подписка (upstream) | Отдельный порт, **без** web base path | `UPSTREAM_BASE_URL`, `UPSTREAM_JSON_PATH` |
 
 ```
 https://example.com/<ваш-путь>/abcd1234efgh5678
@@ -70,75 +63,21 @@ https://example.com/<ваш-путь>/abcd1234efgh5678
 python -m app.cli
 ```
 
-| # | Раздел | Действие |
-|---|--------|----------|
-| 1 | Настройки | Показать / изменить настройки панели |
-| 2 | Настройки | Показать настройки скрипта (.env) |
-| 3 | Настройки | Проверить подключение к Panel API |
-| 4 | Настройки | Состояние systemd-службы |
-| 5 | Настройки | Установить службу systemd |
-| 6–7 | Данные панели | Список инбаундов / групп |
-| 8 | Настройка JSON | Балансировщики |
-| 9 | Синхронизация | Каталог + группы клиентов |
-| 10 | Отладка | Запуск uvicorn вручную |
-
-Команды Typer (без меню):
+| # | Действие |
+|---|----------|
+| 1 | Обзор состояния |
+| 2 | Настройки агента / режим ios-fix или passthrough |
+| 3 | Служба systemd |
+| 4 | Проверить подписку |
+| 5 | Запуск uvicorn вручную |
 
 ```bash
 python -m app.cli settings show
-python -m app.cli catalog sync
-python -m app.cli group sync
+python -m app.cli settings transform-mode ios-fix
 python -m app.cli service status
 python -m app.cli service install --start
-python -m app.cli balancer create --name "Pool" --members 1,7
 ```
-
-## Балансировщики
-
-1. Установите `TRANSFORM_MODE=rules` в `.env`
-2. Синхронизируйте каталог (п. 9 в меню)
-3. Создайте балансировщик (п. 8) — выберите инбаунды, стратегию, область (группа / клиент)
-4. Перезапустите службу
-
-Балансировщики и привязки к группам хранятся в SQLite (`data/middleware.db`).
 
 ## Деплой
 
-Production-развёртывание (nginx, systemd, обновление):
-
 - [docs/DEPLOY.md](docs/DEPLOY.md)
-
-Кратко:
-
-```bash
-chmod 600 .env
-python -m app.cli          # п. 5 — установить systemd
-# nginx: см. deploy/nginx.conf.example
-```
-
-## Документация
-
-| Файл | Содержание |
-|------|------------|
-| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Все переменные `.env`, приоритеты, troubleshooting |
-| [docs/DEPLOY.md](docs/DEPLOY.md) | VPS, nginx, systemd, обновление |
-| [docs/TZ.md](docs/TZ.md) | Техническое задание |
-| [SECURITY.md](SECURITY.md) | Секреты, ротация токенов, отчёт об уязвимостях |
-
-## Безопасность
-
-- Файл `.env` **не коммитится** — см. `.env.example`
-- Токен панели маскируется в CLI (`abcd...wxyz`)
-- После публикации репозитория **ротируйте** Panel API token в 3x-ui
-- `chmod 600 .env` на сервере
-
-## Разработка
-
-```bash
-pip install -r requirements.txt
-pytest -q
-```
-
-## Лицензия
-
-MIT — см. [LICENSE](LICENSE).

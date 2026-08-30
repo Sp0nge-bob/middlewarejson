@@ -1,4 +1,4 @@
-"""Операторские экраны CLI: обзор, клиенты, превью подписки."""
+"""Операторские экраны CLI: обзор и превью подписки."""
 
 from __future__ import annotations
 
@@ -11,10 +11,8 @@ import httpx
 from rich import box
 from rich.table import Table
 
-from app.cli_balancer import filter_clients
 from app.cli_ui import (
     CANCEL_HINT,
-    confirm_prompt,
     console,
     is_exit_choice,
     print_error,
@@ -28,21 +26,13 @@ from app.cli_ui import (
 )
 from app.config import settings
 from app.db.database import Database
-from app.db.repository import CatalogRepository, ClientRecord
-from app.models.balancer import format_scope, format_strategy
+from app.db.repository import SettingsRepository
 from app.models.subscription import (
     parse_subscription_reference,
     validate_payload,
     validate_sub_id,
 )
-from app.services.panel_api import (
-    PANEL_API_BASE_URL_KEY,
-    PANEL_API_TOKEN_KEY,
-    TRANSFORM_MODE_KEY,
-    resolve_panel_token,
-    resolve_transform_mode,
-    resolve_upstream_base_url,
-)
+from app.services.mode import TRANSFORM_MODE_KEY, resolve_transform_mode
 from app.services.systemd_service import (
     get_service_scope,
     is_linux,
@@ -53,16 +43,13 @@ from app.services.transform_service import TransformService
 from app.services.upstream import UpstreamClient, UpstreamError
 
 _SYSTEM_PROTOCOLS = frozenset({"freedom", "blackhole", "dns"})
-_MAX_CLIENT_RESULTS = 20
 
 
-def _repo() -> CatalogRepository:
-    return CatalogRepository(Database(settings.db_path))
+def _repo() -> SettingsRepository:
+    return SettingsRepository(Database(settings.db_path))
 
 
 def _transform_mode_label(mode: str) -> str:
-    if mode == "rules":
-        return "rules — балансировщики"
     if mode == "ios-fix":
         return "ios-fix — mixed→socks, балансер 3x-ui под iOS"
     return "passthrough — без изменений"
@@ -95,7 +82,7 @@ def _service_label() -> str:
     return labels.get(status.active, status.active)
 
 
-def print_status_bar(repo: CatalogRepository | None = None) -> None:
+def print_status_bar(repo: SettingsRepository | None = None) -> None:
     repo = repo or _repo()
     mode = resolve_transform_mode(settings, repo.get_setting(TRANSFORM_MODE_KEY))
     health_ok, health = _probe_health()
@@ -105,53 +92,30 @@ def print_status_bar(repo: CatalogRepository | None = None) -> None:
         f"[green]{service}[/green]" if service == "работает" else f"[yellow]{service}[/yellow]"
     )
     mode_text = (
-        f"[green]{mode}[/green]" if mode == "rules" else f"[yellow]{mode}[/yellow]"
+        f"[green]{mode}[/green]" if mode == "ios-fix" else f"[yellow]{mode}[/yellow]"
     )
     console.print(
-        f"  режим {mode_text}  ·  пулов [bold]{len(repo.list_balancers())}[/bold]"
-        f"  ·  инбаундов [bold]{len(repo.list_inbounds(active_only=True))}[/bold]"
-        f"  ·  клиентов [bold]{len(repo.list_all_clients())}[/bold]"
-        f"  ·  служба {service_text}  ·  health {health_text}"
+        f"  режим {mode_text}  ·  служба {service_text}  ·  health {health_text}"
     )
 
 
 def print_dashboard() -> None:
     repo = _repo()
     mode = resolve_transform_mode(settings, repo.get_setting(TRANSFORM_MODE_KEY))
-    upstream_base = resolve_upstream_base_url(
-        settings,
-        repo.get_setting(PANEL_API_BASE_URL_KEY),
-    )
+    upstream_base = settings.resolved_upstream_base_url()
     upstream_path = settings.upstream_json_path.rstrip("/")
     agent_path = settings.resolved_agent_json_path()
-    token = resolve_panel_token(settings, repo.get_setting(PANEL_API_TOKEN_KEY))
-    inbounds = repo.list_inbounds(active_only=True)
-    clients = repo.list_all_clients()
-    groups = repo.list_groups()
-    balancers = repo.list_balancers()
     health_ok, health = _probe_health()
-    last_seen = ""
-    if inbounds:
-        last_seen = max(str(row.get("last_seen_at") or "") for row in inbounds)
 
     console.print()
     print_section("Обзор")
     print_field("Режим", _transform_mode_label(mode))
     print_field("Агент", f"http://{settings.agent_host}:{settings.agent_port}{agent_path}/<sub_id>")
     print_field("Upstream", f"{upstream_base}{upstream_path}/<sub_id>" if upstream_base else "—")
-    print_field("Панель API", "настроена" if token else "нет token")
     print_field("Служба", _service_label())
     print_field("Health", "ok" if health_ok else health)
-    print_field("Инбаундов", str(len(inbounds)))
-    print_field("Групп", str(len(groups)))
-    print_field("Клиентов", str(len(clients)))
-    print_field("Балансировщиков", str(len(balancers)))
-    if last_seen:
-        print_field("Каталог обновлён", last_seen)
-    if balancers and mode != "rules":
-        print_warning("Пулы в базе есть, но режим passthrough — в подписке не применяются")
-    if not token:
-        print_warning("Задайте token панели: меню «Настройки»")
+    if not upstream_base:
+        print_warning("Задайте UPSTREAM_BASE_URL в .env")
     if not health_ok:
         print_info("Агент не слушает /health — установите службу или запустите вручную")
 
@@ -224,8 +188,6 @@ def _warn_profiles(rows: list[dict[str, Any]]) -> None:
             print_warning(f"[{row['index']}] {row['remarks']}: пустой selector — туннель будет чёрной дырой")
         if row["kind"] == "пул" and row["proxies"] == 0:
             print_warning(f"[{row['index']}] {row['remarks']}: нет proxy outbound")
-        if row["kind"] == "пул" and not row["fallback"]:
-            print_info(f"[{row['index']}] {row['remarks']}: нет fallbackTag")
 
 
 def _fetch_from_agent(sub_id: str) -> tuple[int, Any, str] | None:
@@ -249,12 +211,7 @@ def _fetch_from_agent(sub_id: str) -> tuple[int, Any, str] | None:
 
 
 async def _fetch_upstream(sub_id: str) -> tuple[int, str]:
-    repo = _repo()
-    upstream_base = resolve_upstream_base_url(
-        settings,
-        repo.get_setting(PANEL_API_BASE_URL_KEY),
-    )
-    client = UpstreamClient(settings, base_url=upstream_base)
+    client = UpstreamClient(settings, base_url=settings.resolved_upstream_base_url())
     result = await client.fetch(sub_id)
     return result.status_code, result.body
 
@@ -270,19 +227,11 @@ def preview_subscription(raw_ref: str) -> None:
         return
 
     repo = _repo()
-    client = _find_client(repo, sub_id)
-    tags = repo.get_balancer_tags_for_sub_id(sub_id)
     mode = resolve_transform_mode(settings, repo.get_setting(TRANSFORM_MODE_KEY))
 
     console.print()
     print_field("sub_id", sub_id)
     print_field("Режим", _transform_mode_label(mode))
-    if client:
-        print_field("Клиент", client.email or "—")
-        print_field("Группа", client.group_name or "—")
-    else:
-        print_field("Клиент", "нет в индексе (после sync появится группа)")
-    print_field("Пулы для клиента", ", ".join(tags) if tags else "нет")
 
     payload: Any = None
     source = ""
@@ -295,10 +244,6 @@ def preview_subscription(raw_ref: str) -> None:
         else:
             detail = f" — {error_text}" if error_text else ""
             print_warning(f"Агент ответил HTTP {status}{detail}")
-            print_info(
-                "HEAD (curl -sI) не парсит тело и может быть 200, "
-                "а GET падает. Смотрите: journalctl -u middlewarejson -n 50"
-            )
 
     if payload is None:
         try:
@@ -337,111 +282,6 @@ def run_preview_interactive() -> None:
     preview_subscription(raw)
 
 
-def _find_client(repo: CatalogRepository, sub_id: str) -> ClientRecord | None:
-    for client in repo.list_all_clients(enabled_only=False):
-        if client.sub_id == sub_id:
-            return client
-    return None
-
-
-def _print_client(client: ClientRecord, repo: CatalogRepository) -> None:
-    tags = repo.get_balancer_tags_for_sub_id(client.sub_id)
-    print_field("Email", client.email or "—")
-    print_field("sub_id", client.sub_id)
-    print_field("Группа", client.group_name or "—")
-    print_field("Включён", "да" if client.enable else "нет")
-    print_field("Пулы", ", ".join(tags) if tags else "нет")
-
-
-def run_client_search() -> None:
-    repo = _repo()
-    clients = repo.list_all_clients(enabled_only=False)
-    if not clients:
-        print_warning("Клиентов нет. Сначала синхронизация.")
-        return
-
-    print_info(f"Клиентов в базе: {len(clients)}. Поиск по email, группе или sub_id")
-    query = text_prompt(f"Поиск, {CANCEL_HINT}", default="").strip()
-    if not query or is_exit_choice(query):
-        return
-
-    exact = _find_client(repo, query)
-    matches = [exact] if exact else filter_clients(clients, query)
-    if not matches:
-        print_warning("Ничего не найдено")
-        return
-
-    shown = matches[:_MAX_CLIENT_RESULTS]
-    if len(matches) > _MAX_CLIENT_RESULTS:
-        print_info(f"Найдено {len(matches)}, показаны первые {_MAX_CLIENT_RESULTS}")
-
-    table = Table(title="Клиенты", box=box.SIMPLE_HEAD)
-    table.add_column("#", justify="right")
-    table.add_column("Email")
-    table.add_column("Группа")
-    table.add_column("sub_id")
-    table.add_column("Пулы")
-    for index, client in enumerate(shown):
-        tags = repo.get_balancer_tags_for_sub_id(client.sub_id)
-        table.add_row(
-            str(index),
-            client.email or "—",
-            client.group_name or "—",
-            client.sub_id,
-            ", ".join(tags) if tags else "—",
-        )
-    console.print(table)
-
-    if len(shown) == 1:
-        console.print()
-        _print_client(shown[0], repo)
-        if confirm_prompt("Проверить подписку этого клиента?", default=False):
-            preview_subscription(shown[0].sub_id)
-        return
-
-    pick = text_prompt(f"Номер клиента для превью подписки, {CANCEL_HINT}", default="").strip()
-    if not pick or is_exit_choice(pick):
-        return
-    try:
-        preview_subscription(shown[int(pick)].sub_id)
-    except (ValueError, IndexError):
-        print_error("Неверный номер")
-
-
-def run_groups_menu(list_groups, show_group) -> None:
-    while True:
-        console.print()
-        print_section("Группы и клиенты")
-        print_menu_item(1, "Список групп")
-        print_menu_item(2, "Клиенты группы")
-        print_menu_item(3, "Найти клиента")
-        print_menu_item(0, "Назад")
-        choice = prompt_line("Выбор [0 — назад]")
-        if choice == "0" or not choice:
-            return
-        if choice == "1":
-            list_groups()
-        elif choice == "2":
-            repo = _repo()
-            groups = repo.list_groups()
-            if not groups:
-                print_warning("Групп нет. Сначала синхронизация.")
-                continue
-            for index, name in enumerate(groups):
-                console.print(f"  {index}. {name}")
-            pick = text_prompt(f"Номер группы, {CANCEL_HINT}", default="").strip()
-            if not pick or is_exit_choice(pick):
-                continue
-            try:
-                show_group(groups[int(pick)])
-            except (ValueError, IndexError):
-                print_error("Неверный номер")
-        elif choice == "3":
-            run_client_search()
-        else:
-            print_warning("Неизвестный пункт")
-
-
 def show_service_logs(*, lines: int = 40) -> None:
     if not is_linux() or not systemctl_available():
         print_warning("journalctl доступен только на Linux с systemd")
@@ -468,9 +308,9 @@ def run_service_menu(status_menu, install_menu) -> None:
     while True:
         console.print()
         print_section("Служба")
-        print_menu_item(1, "Состояние и управление")
+        print_menu_item(1, "Статус")
         print_menu_item(2, "Установить systemd")
-        print_menu_item(3, "Логи (journalctl)")
+        print_menu_item(3, "Логи")
         print_menu_item(0, "Назад")
         choice = prompt_line("Выбор [0 — назад]")
         if choice == "0" or not choice:

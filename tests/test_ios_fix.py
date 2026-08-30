@@ -4,8 +4,8 @@ from pathlib import Path
 
 from app.config import Settings
 from app.db.database import Database
-from app.db.repository import CatalogRepository, ClientRecord
-from app.services.panel_api import normalize_transform_mode
+from app.db.repository import SettingsRepository
+from app.services.mode import normalize_transform_mode
 from app.services.transform_service import TransformService
 from app.transformers.ios_fix import apply_ios_fix
 
@@ -376,25 +376,14 @@ def test_apply_ios_fix_leaves_socks_first_unchanged() -> None:
     assert result["inbounds"][0]["protocol"] == "socks"
 
 
-def test_ios_fix_mode_does_not_drop_loopback_or_apply_balancers(tmp_path: Path) -> None:
-    repo = CatalogRepository(Database(tmp_path / "ios.db"))
-    repo.create_balancer(
-        tag="pool",
-        remarks="Pool",
-        strategy="roundRobin",
-        member_fingerprints=["vless|node1.example.com|ws|/ws-path|443|tls|"],
-        scope="client",
-        scope_target="client_a_sub_id12",
-    )
-    repo.upsert_clients(
-        [ClientRecord("client_a_sub_id12", "premium", "premium@example.com", True)]
-    )
+def test_ios_fix_mode_keeps_upstream_profiles(tmp_path: Path) -> None:
+    repo = SettingsRepository(Database(tmp_path / "ios.db"))
     repo.set_setting("transform_mode", "ios-fix")
-
     configs = json.loads(RAW.read_text(encoding="utf-8"))
-    service = TransformService(Settings(transform_mode="passthrough", db_path=str(repo._db.path)))
+    service = TransformService(
+        Settings(transform_mode="passthrough", db_path=str(repo._db.path))
+    )
     result = service.transform("client_a_sub_id12", configs)
     remarks = [item["remarks"] for item in result]
-    assert "Pool" not in remarks
     assert "hysteria-turn" in remarks
     assert "NL-WS" in remarks
