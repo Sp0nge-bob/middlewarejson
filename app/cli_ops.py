@@ -50,6 +50,8 @@ def _repo() -> SettingsRepository:
 
 
 def _transform_mode_label(mode: str) -> str:
+    if mode == "ios-fix-beta":
+        return "ios-fix-beta — ios-fix + блок QUIC (UDP 443) + DNS в прокси"
     if mode == "ios-fix":
         return "ios-fix — mixed→socks, балансер 3x-ui под iOS"
     return "passthrough — без изменений"
@@ -92,7 +94,7 @@ def print_status_bar(repo: SettingsRepository | None = None) -> None:
         f"[green]{service}[/green]" if service == "работает" else f"[yellow]{service}[/yellow]"
     )
     mode_text = (
-        f"[green]{mode}[/green]" if mode == "ios-fix" else f"[yellow]{mode}[/yellow]"
+        f"[green]{mode}[/green]" if mode in ("ios-fix", "ios-fix-beta") else f"[yellow]{mode}[/yellow]"
     )
     console.print(
         f"  режим {mode_text}  ·  служба {service_text}  ·  health {health_text}"

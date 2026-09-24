@@ -6,7 +6,7 @@ from app.db.repository import SettingsRepository
 from app.models.subscription import SubscriptionPayload
 from app.services.mode import TRANSFORM_MODE_KEY, resolve_transform_mode
 from app.services.transformer import PassthroughTransformer
-from app.transformers.ios_fix import apply_ios_fix
+from app.transformers.ios_fix import apply_ios_fix, apply_ios_fix_beta
 
 logger = logging.getLogger(__name__)
 
@@ -29,5 +29,8 @@ class TransformService:
         if mode == "ios-fix":
             logger.info("ios-fix for sub_id=%s", sub_id)
             return apply_ios_fix(raw)
+        if mode == "ios-fix-beta":
+            logger.info("ios-fix-beta for sub_id=%s", sub_id)
+            return apply_ios_fix_beta(raw)
         logger.info("passthrough for sub_id=%s", sub_id)
         return raw

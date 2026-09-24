@@ -28,6 +28,14 @@ _SYSTEM_PROTOCOLS = frozenset({"freedom", "blackhole", "dns"})
 
 
 def apply_ios_fix(payload: SubscriptionPayload) -> SubscriptionPayload:
+    return _process_ios_fix(payload, inject_routing=False)
+
+
+def apply_ios_fix_beta(payload: SubscriptionPayload) -> SubscriptionPayload:
+    return _process_ios_fix(payload, inject_routing=True)
+
+
+def _process_ios_fix(payload: SubscriptionPayload, *, inject_routing: bool) -> SubscriptionPayload:
     configs = payload if isinstance(payload, list) else [payload]
     result: list[Any] = []
     for config in configs:
@@ -39,10 +47,106 @@ def apply_ios_fix(payload: SubscriptionPayload) -> SubscriptionPayload:
         _strip_fakedns(fixed)
         _flatten_tls_settings(fixed)
         _fix_panel_balancer(fixed)
+        if inject_routing:
+            _inject_routing_rules(fixed)
         result.append(fixed)
     if isinstance(payload, list):
         return result
     return result[0] if result else payload
+
+
+def _inject_routing_rules(config: dict[str, Any]) -> None:
+    routing = config.get("routing")
+    if not isinstance(routing, dict):
+        routing = {"domainStrategy": "AsIs", "rules": []}
+        config["routing"] = routing
+
+    rules = routing.get("rules")
+    if not isinstance(rules, list):
+        rules = []
+        routing["rules"] = rules
+
+    outbounds = config.get("outbounds")
+    if isinstance(outbounds, list):
+        has_block = any(isinstance(ob, dict) and ob.get("tag") == "block" for ob in outbounds)
+        if not has_block:
+            outbounds.append({
+                "protocol": "blackhole",
+                "settings": {"response": {"type": "http"}},
+                "tag": "block",
+            })
+
+    target_balancer_tag: str | None = None
+    balancers = routing.get("balancers")
+    if isinstance(balancers, list):
+        for b in balancers:
+            if isinstance(b, dict) and b.get("tag"):
+                target_balancer_tag = str(b["tag"])
+                break
+
+    if not target_balancer_tag:
+        for r in rules:
+            if isinstance(r, dict) and r.get("balancerTag"):
+                target_balancer_tag = str(r["balancerTag"])
+                break
+
+    target_outbound_tag: str | None = None
+    if not target_balancer_tag:
+        for r in rules:
+            if isinstance(r, dict):
+                tag = str(r.get("outboundTag") or "")
+                if tag and tag not in ("direct", "block"):
+                    target_outbound_tag = tag
+                    break
+
+        if not target_outbound_tag and isinstance(outbounds, list):
+            for ob in outbounds:
+                if isinstance(ob, dict):
+                    proto = str(ob.get("protocol") or "").strip().lower()
+                    tag = str(ob.get("tag") or "")
+                    if proto not in _SYSTEM_PROTOCOLS and tag:
+                        target_outbound_tag = tag
+                        break
+        if not target_outbound_tag:
+            target_outbound_tag = "proxy"
+
+    block_quic_rule = {
+        "type": "field",
+        "port": 443,
+        "network": "udp",
+        "outboundTag": "block",
+    }
+
+    dns_rule: dict[str, Any] = {
+        "type": "field",
+        "port": 53,
+        "network": "tcp,udp",
+    }
+    if target_balancer_tag:
+        dns_rule["balancerTag"] = target_balancer_tag
+    else:
+        dns_rule["outboundTag"] = target_outbound_tag
+
+    has_quic_block = any(
+        isinstance(r, dict)
+        and r.get("port") in (443, "443")
+        and r.get("network") in ("udp", "udp,tcp", "tcp,udp")
+        and r.get("outboundTag") == "block"
+        for r in rules
+    )
+    has_dns_rule = any(
+        isinstance(r, dict) and r.get("port") in (53, "53")
+        for r in rules
+    )
+
+    to_prepend: list[dict[str, Any]] = []
+    if not has_quic_block:
+        to_prepend.append(block_quic_rule)
+    if not has_dns_rule:
+        to_prepend.append(dns_rule)
+
+    if to_prepend:
+        rules[:0] = to_prepend
 
 
 def _fix_first_inbound(config: dict[str, Any]) -> None:

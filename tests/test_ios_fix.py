@@ -7,7 +7,7 @@ from app.db.database import Database
 from app.db.repository import SettingsRepository
 from app.services.mode import normalize_transform_mode
 from app.services.transform_service import TransformService
-from app.transformers.ios_fix import apply_ios_fix
+from app.transformers.ios_fix import apply_ios_fix, apply_ios_fix_beta
 
 RAW = Path(__file__).parent / "fixtures" / "raw_3xui_subscription.json"
 
@@ -16,6 +16,9 @@ def test_normalize_accepts_ios_fix_aliases() -> None:
     assert normalize_transform_mode("IOS-FIX") == "ios-fix"
     assert normalize_transform_mode("ios_fix") == "ios-fix"
     assert normalize_transform_mode("iosfix") == "ios-fix"
+    assert normalize_transform_mode("IOS-FIX-BETA") == "ios-fix-beta"
+    assert normalize_transform_mode("ios_fix_beta") == "ios-fix-beta"
+    assert normalize_transform_mode("iosfixbeta") == "ios-fix-beta"
 
 
 def test_apply_ios_fix_changes_only_first_mixed() -> None:
@@ -374,6 +377,101 @@ def test_apply_ios_fix_leaves_socks_first_unchanged() -> None:
     }
     result = apply_ios_fix(payload)
     assert result["inbounds"][0]["protocol"] == "socks"
+
+
+def test_apply_ios_fix_beta_injects_quic_block_and_dns_proxy() -> None:
+    payload = {
+        "remarks": "NL",
+        "inbounds": [{"protocol": "mixed", "port": 10808}],
+        "outbounds": [
+            {"protocol": "vless", "tag": "proxy"},
+            {"protocol": "freedom", "tag": "direct"},
+        ],
+        "routing": {
+            "domainStrategy": "AsIs",
+            "rules": [
+                {"network": "tcp,udp", "outboundTag": "proxy", "type": "field"}
+            ],
+        },
+    }
+    result = apply_ios_fix_beta(payload)
+    # Checks standard ios_fix was applied
+    assert result["inbounds"][0]["protocol"] == "socks"
+    # Checks blackhole block outbound was ensured
+    tags = [ob["tag"] for ob in result["outbounds"]]
+    assert "block" in tags
+    # Checks rules were injected
+    rules = result["routing"]["rules"]
+    assert len(rules) == 3
+    assert rules[0] == {
+        "type": "field",
+        "port": 443,
+        "network": "udp",
+        "outboundTag": "block",
+    }
+    assert rules[1] == {
+        "type": "field",
+        "port": 53,
+        "network": "tcp,udp",
+        "outboundTag": "proxy",
+    }
+    assert rules[2] == {"network": "tcp,udp", "outboundTag": "proxy", "type": "field"}
+
+
+def test_apply_ios_fix_beta_handles_balancer() -> None:
+    payload = {
+        "remarks": "Auto",
+        "inbounds": [{"protocol": "socks", "port": 10808}],
+        "outbounds": [
+            {"protocol": "vless", "tag": "bal-1"},
+            {"protocol": "vless", "tag": "bal-2"},
+            {"protocol": "blackhole", "tag": "block"},
+        ],
+        "routing": {
+            "balancers": [
+                {
+                    "tag": "balancer",
+                    "selector": ["bal-"],
+                    "strategy": {"type": "leastPing"},
+                }
+            ],
+            "domainStrategy": "AsIs",
+            "rules": [
+                {"balancerTag": "balancer", "network": "tcp,udp", "type": "field"}
+            ],
+        },
+    }
+    result = apply_ios_fix_beta(payload)
+    rules = result["routing"]["rules"]
+    assert rules[0]["outboundTag"] == "block"
+    assert rules[0]["port"] == 443
+    assert rules[0]["network"] == "udp"
+    assert rules[1]["balancerTag"] == "balancer"
+    assert rules[1]["port"] == 53
+    assert rules[1]["network"] == "tcp,udp"
+    assert rules[2]["balancerTag"] == "balancer"
+
+
+def test_apply_ios_fix_beta_no_duplicate_injection() -> None:
+    payload = {
+        "remarks": "NL",
+        "inbounds": [{"protocol": "socks", "port": 10808}],
+        "outbounds": [
+            {"protocol": "vless", "tag": "proxy"},
+            {"protocol": "blackhole", "tag": "block"},
+        ],
+        "routing": {
+            "domainStrategy": "AsIs",
+            "rules": [
+                {"type": "field", "port": 443, "network": "udp", "outboundTag": "block"},
+                {"type": "field", "port": 53, "network": "tcp,udp", "outboundTag": "proxy"},
+                {"network": "tcp,udp", "outboundTag": "proxy", "type": "field"},
+            ],
+        },
+    }
+    result = apply_ios_fix_beta(payload)
+    rules = result["routing"]["rules"]
+    assert len(rules) == 3
 
 
 def test_ios_fix_mode_keeps_upstream_profiles(tmp_path: Path) -> None:
