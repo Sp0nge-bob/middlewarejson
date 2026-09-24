@@ -66,16 +66,6 @@ def _inject_routing_rules(config: dict[str, Any]) -> None:
         rules = []
         routing["rules"] = rules
 
-    outbounds = config.get("outbounds")
-    if isinstance(outbounds, list):
-        has_block = any(isinstance(ob, dict) and ob.get("tag") == "block" for ob in outbounds)
-        if not has_block:
-            outbounds.append({
-                "protocol": "blackhole",
-                "settings": {"response": {"type": "http"}},
-                "tag": "block",
-            })
-
     target_balancer_tag: str | None = None
     balancers = routing.get("balancers")
     if isinstance(balancers, list):
@@ -90,6 +80,7 @@ def _inject_routing_rules(config: dict[str, Any]) -> None:
                 target_balancer_tag = str(r["balancerTag"])
                 break
 
+    outbounds = config.get("outbounds")
     target_outbound_tag: str | None = None
     if not target_balancer_tag:
         for r in rules:
@@ -110,13 +101,6 @@ def _inject_routing_rules(config: dict[str, Any]) -> None:
         if not target_outbound_tag:
             target_outbound_tag = "proxy"
 
-    block_quic_rule = {
-        "type": "field",
-        "port": 443,
-        "network": "udp",
-        "outboundTag": "block",
-    }
-
     dns_rule: dict[str, Any] = {
         "type": "field",
         "port": 53,
@@ -127,26 +111,13 @@ def _inject_routing_rules(config: dict[str, Any]) -> None:
     else:
         dns_rule["outboundTag"] = target_outbound_tag
 
-    has_quic_block = any(
-        isinstance(r, dict)
-        and r.get("port") in (443, "443")
-        and r.get("network") in ("udp", "udp,tcp", "tcp,udp")
-        and r.get("outboundTag") == "block"
-        for r in rules
-    )
     has_dns_rule = any(
         isinstance(r, dict) and r.get("port") in (53, "53")
         for r in rules
     )
 
-    to_prepend: list[dict[str, Any]] = []
-    if not has_quic_block:
-        to_prepend.append(block_quic_rule)
     if not has_dns_rule:
-        to_prepend.append(dns_rule)
-
-    if to_prepend:
-        rules[:0] = to_prepend
+        rules.insert(0, dns_rule)
 
 
 def _fix_first_inbound(config: dict[str, Any]) -> None:

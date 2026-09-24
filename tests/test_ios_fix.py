@@ -379,7 +379,7 @@ def test_apply_ios_fix_leaves_socks_first_unchanged() -> None:
     assert result["inbounds"][0]["protocol"] == "socks"
 
 
-def test_apply_ios_fix_beta_injects_quic_block_and_dns_proxy() -> None:
+def test_apply_ios_fix_beta_injects_dns_proxy() -> None:
     payload = {
         "remarks": "NL",
         "inbounds": [{"protocol": "mixed", "port": 10808}],
@@ -397,25 +397,16 @@ def test_apply_ios_fix_beta_injects_quic_block_and_dns_proxy() -> None:
     result = apply_ios_fix_beta(payload)
     # Checks standard ios_fix was applied
     assert result["inbounds"][0]["protocol"] == "socks"
-    # Checks blackhole block outbound was ensured
-    tags = [ob["tag"] for ob in result["outbounds"]]
-    assert "block" in tags
     # Checks rules were injected
     rules = result["routing"]["rules"]
-    assert len(rules) == 3
+    assert len(rules) == 2
     assert rules[0] == {
-        "type": "field",
-        "port": 443,
-        "network": "udp",
-        "outboundTag": "block",
-    }
-    assert rules[1] == {
         "type": "field",
         "port": 53,
         "network": "tcp,udp",
         "outboundTag": "proxy",
     }
-    assert rules[2] == {"network": "tcp,udp", "outboundTag": "proxy", "type": "field"}
+    assert rules[1] == {"network": "tcp,udp", "outboundTag": "proxy", "type": "field"}
 
 
 def test_apply_ios_fix_beta_handles_balancer() -> None:
@@ -425,7 +416,6 @@ def test_apply_ios_fix_beta_handles_balancer() -> None:
         "outbounds": [
             {"protocol": "vless", "tag": "bal-1"},
             {"protocol": "vless", "tag": "bal-2"},
-            {"protocol": "blackhole", "tag": "block"},
         ],
         "routing": {
             "balancers": [
@@ -443,13 +433,14 @@ def test_apply_ios_fix_beta_handles_balancer() -> None:
     }
     result = apply_ios_fix_beta(payload)
     rules = result["routing"]["rules"]
-    assert rules[0]["outboundTag"] == "block"
-    assert rules[0]["port"] == 443
-    assert rules[0]["network"] == "udp"
+    assert len(rules) == 2
+    assert rules[0] == {
+        "type": "field",
+        "port": 53,
+        "network": "tcp,udp",
+        "balancerTag": "balancer",
+    }
     assert rules[1]["balancerTag"] == "balancer"
-    assert rules[1]["port"] == 53
-    assert rules[1]["network"] == "tcp,udp"
-    assert rules[2]["balancerTag"] == "balancer"
 
 
 def test_apply_ios_fix_beta_no_duplicate_injection() -> None:
@@ -458,12 +449,10 @@ def test_apply_ios_fix_beta_no_duplicate_injection() -> None:
         "inbounds": [{"protocol": "socks", "port": 10808}],
         "outbounds": [
             {"protocol": "vless", "tag": "proxy"},
-            {"protocol": "blackhole", "tag": "block"},
         ],
         "routing": {
             "domainStrategy": "AsIs",
             "rules": [
-                {"type": "field", "port": 443, "network": "udp", "outboundTag": "block"},
                 {"type": "field", "port": 53, "network": "tcp,udp", "outboundTag": "proxy"},
                 {"network": "tcp,udp", "outboundTag": "proxy", "type": "field"},
             ],
@@ -471,7 +460,7 @@ def test_apply_ios_fix_beta_no_duplicate_injection() -> None:
     }
     result = apply_ios_fix_beta(payload)
     rules = result["routing"]["rules"]
-    assert len(rules) == 3
+    assert len(rules) == 2
 
 
 def test_ios_fix_mode_keeps_upstream_profiles(tmp_path: Path) -> None:

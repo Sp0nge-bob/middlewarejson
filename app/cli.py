@@ -47,7 +47,7 @@ def _repo() -> SettingsRepository:
 
 def _transform_mode_label(mode: str) -> str:
     if mode == "ios-fix-beta":
-        return "ios-fix-beta — ios-fix + блок QUIC (UDP 443) + DNS в прокси"
+        return "ios-fix-beta — ios-fix + перехват DNS в прокси"
     if mode == "ios-fix":
         return "ios-fix — mixed→socks, балансер 3x-ui под iOS"
     return "passthrough — подписка без изменений"
@@ -70,7 +70,7 @@ def _do_edit_transform_mode(repo: SettingsRepository) -> None:
     console.print()
     print_field("Текущий режим", _transform_mode_label(current))
     print_menu_item(1, "ios-fix — socks вместо mixed, leastPing/leastLoad/roundRobin под iOS")
-    print_menu_item(2, "ios-fix-beta — ios-fix + блок QUIC (UDP 443) + DNS в прокси")
+    print_menu_item(2, "ios-fix-beta — ios-fix + перехват DNS в прокси")
     print_menu_item(3, "passthrough — подписка без изменений")
     print_menu_item(0, "Назад")
 

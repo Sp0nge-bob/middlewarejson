@@ -60,5 +60,5 @@ def test_transform_service_uses_database_mode_without_restart(tmp_path: Path) ->
     repo.set_setting(TRANSFORM_MODE_KEY, "ios-fix-beta")
     beta_fixed = service.transform("sub", payload)
     assert beta_fixed[0]["inbounds"][0]["protocol"] == "socks"
-    assert beta_fixed[0]["routing"]["rules"][0]["outboundTag"] == "block"
-    assert beta_fixed[0]["routing"]["rules"][0]["port"] == 443
+    assert beta_fixed[0]["routing"]["rules"][0]["outboundTag"] == "proxy"
+    assert beta_fixed[0]["routing"]["rules"][0]["port"] == 53
