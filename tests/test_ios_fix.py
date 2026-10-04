@@ -171,7 +171,7 @@ def test_apply_ios_fix_rewrites_3xui_burst_leastping_dump() -> None:
             {"port": 10809, "protocol": "http", "tag": "http"},
         ],
         "outbounds": [
-            {"protocol": "vless", "tag": "bal-3-vless", "settings": {"address": "caelixflow.com"}},
+            {"protocol": "vless", "tag": "bal-3-vless", "settings": {"address": "example.com"}},
             {"protocol": "vless", "tag": "bal-3-vless-2", "settings": {"address": "mirror2"}},
             {"protocol": "vless", "tag": "bal-3-vless-3", "settings": {"address": "mirror3"}},
             {"protocol": "vless", "tag": "bal-3-vless-4", "settings": {"address": "mirror1"}},
