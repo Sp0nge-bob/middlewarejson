@@ -5,18 +5,21 @@ from app.config import Settings
 logger = logging.getLogger(__name__)
 
 TRANSFORM_MODE_KEY = "transform_mode"
-VALID_TRANSFORM_MODES = frozenset({"passthrough", "ios-fix", "ios-fix-beta"})
+VALID_TRANSFORM_MODES = frozenset({"passthrough", "ios-fix", "ios-fix-dns"})
 
 
 def normalize_transform_mode(value: str) -> str:
     mode = value.strip().lower().replace("_", "-")
     if mode in ("iosfix", "ios-fix"):
         mode = "ios-fix"
-    elif mode in ("iosfixbeta", "ios-fix-beta", "iosfix-beta"):
-        mode = "ios-fix-beta"
+    elif mode in (
+        "iosfixdns", "ios-fix-dns", "iosfix-dns",
+        "iosfixbeta", "ios-fix-beta", "iosfix-beta",
+    ):
+        mode = "ios-fix-dns"
     if mode not in VALID_TRANSFORM_MODES:
         raise ValueError(
-            f"режим должен быть passthrough, ios-fix или ios-fix-beta, получено: {value!r}"
+            f"режим должен быть passthrough, ios-fix или ios-fix-dns, получено: {value!r}"
         )
     return mode
 

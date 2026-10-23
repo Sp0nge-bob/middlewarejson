@@ -30,3 +30,4 @@ agent-tools/
 terminals/
 gemini-code-*.md
 .tmp-*/
+.test_tmp/

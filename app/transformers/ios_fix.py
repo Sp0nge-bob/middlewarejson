@@ -31,7 +31,7 @@ def apply_ios_fix(payload: SubscriptionPayload) -> SubscriptionPayload:
     return _process_ios_fix(payload, inject_routing=False)
 
 
-def apply_ios_fix_beta(payload: SubscriptionPayload) -> SubscriptionPayload:
+def apply_ios_fix_dns(payload: SubscriptionPayload) -> SubscriptionPayload:
     return _process_ios_fix(payload, inject_routing=True)
 
 
@@ -150,10 +150,17 @@ def _strip_fakedns(config: dict[str, Any]) -> None:
 
 def _flatten_tls_block(block: dict[str, Any]) -> None:
     nested = block.pop("settings", None)
-    if not isinstance(nested, dict):
-        return
-    if not block.get("fingerprint") and nested.get("fingerprint"):
-        block["fingerprint"] = nested["fingerprint"]
+    if isinstance(nested, dict):
+        if not block.get("fingerprint") and nested.get("fingerprint"):
+            block["fingerprint"] = nested["fingerprint"]
+        if not block.get("verifyPeerCertByName") and nested.get("verifyPeerCertByName"):
+            block["verifyPeerCertByName"] = nested["verifyPeerCertByName"]
+
+    # Очищаем фиктивные значения verifyPeerCertByName ("0", "false", "none", ""),
+    # из-за которых Xray требует совпадения SAN сертификата с "0" и ломает TLS в Happ.
+    vcn = str(block.get("verifyPeerCertByName", "")).strip().lower()
+    if vcn in ("0", "false", "null", "none", ""):
+        block.pop("verifyPeerCertByName", None)
 
 
 def _flatten_tls_settings(config: dict[str, Any]) -> None:

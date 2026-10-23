@@ -46,8 +46,8 @@ def _repo() -> SettingsRepository:
 
 
 def _transform_mode_label(mode: str) -> str:
-    if mode == "ios-fix-beta":
-        return "ios-fix-beta — ios-fix + перехват DNS в прокси"
+    if mode == "ios-fix-dns":
+        return "ios-fix-dns — ios-fix + перехват DNS в прокси"
     if mode == "ios-fix":
         return "ios-fix — mixed→socks, балансер 3x-ui под iOS"
     return "passthrough — подписка без изменений"
@@ -70,7 +70,7 @@ def _do_edit_transform_mode(repo: SettingsRepository) -> None:
     console.print()
     print_field("Текущий режим", _transform_mode_label(current))
     print_menu_item(1, "ios-fix — socks вместо mixed, leastPing/leastLoad/roundRobin под iOS")
-    print_menu_item(2, "ios-fix-beta — ios-fix + перехват DNS в прокси")
+    print_menu_item(2, "ios-fix-dns — ios-fix + перехват DNS в прокси")
     print_menu_item(3, "passthrough — подписка без изменений")
     print_menu_item(0, "Назад")
 
@@ -80,7 +80,7 @@ def _do_edit_transform_mode(repo: SettingsRepository) -> None:
     if choice == "1":
         target = "ios-fix"
     elif choice == "2":
-        target = "ios-fix-beta"
+        target = "ios-fix-dns"
     elif choice == "3":
         target = "passthrough"
     else:
@@ -209,10 +209,10 @@ def settings_show() -> None:
 def settings_transform_mode(
     mode: str = typer.Argument(
         "",
-        help="passthrough или ios-fix; без аргумента — интерактивный выбор",
+        help="passthrough, ios-fix или ios-fix-dns; без аргумента — интерактивный выбор",
     ),
 ) -> None:
-    """Переключить режим трансформации подписки (passthrough / ios-fix)."""
+    """Переключить режим: passthrough / ios-fix / ios-fix-dns."""
     if not mode:
         _do_edit_transform_mode(_repo())
         return

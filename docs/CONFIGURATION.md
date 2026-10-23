@@ -28,7 +28,7 @@
 
 | Переменная | По умолчанию | Описание |
 |------------|--------------|----------|
-| `TRANSFORM_MODE` | `ios-fix` | `ios-fix` — `mixed` → `socks`, балансер 3x-ui под iOS (leastPing/leastLoad/roundRobin/random); `passthrough` — без изменений. JSON обрабатывается, base64 уходит навылет. |
+| `TRANSFORM_MODE` | `ios-fix` | `ios-fix` — совместимость 3x-ui/Happ iOS; `ios-fix-dns` — те же исправления плюс DNS TCP/UDP:53 через прокси/балансер; `passthrough` — без изменений. Старое имя `ios-fix-beta` принимается как алиас `ios-fix-dns`. Base64 передаётся без изменений. |
 | `DB_PATH` | `data/middleware.db` | SQLite: только режим трансформации |
 
 Балансировщики 3x-ui не создаются скриптом — их отдаёт панель. Агент только правит JSON для HAPP iOS.

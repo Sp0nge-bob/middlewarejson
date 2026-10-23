@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="middlewarejson", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title="middlewarejson", version="1.0.0", lifespan=lifespan)
 app.state.settings = settings
 app.state.transform_service = build_transform_service(settings)
 app.include_router(build_subscription_router(settings.resolved_agent_json_path()))

@@ -7,7 +7,7 @@ from app.db.database import Database
 from app.db.repository import SettingsRepository
 from app.services.mode import normalize_transform_mode
 from app.services.transform_service import TransformService
-from app.transformers.ios_fix import apply_ios_fix, apply_ios_fix_beta
+from app.transformers.ios_fix import apply_ios_fix, apply_ios_fix_dns
 
 RAW = Path(__file__).parent / "fixtures" / "raw_3xui_subscription.json"
 
@@ -16,9 +16,9 @@ def test_normalize_accepts_ios_fix_aliases() -> None:
     assert normalize_transform_mode("IOS-FIX") == "ios-fix"
     assert normalize_transform_mode("ios_fix") == "ios-fix"
     assert normalize_transform_mode("iosfix") == "ios-fix"
-    assert normalize_transform_mode("IOS-FIX-BETA") == "ios-fix-beta"
-    assert normalize_transform_mode("ios_fix_beta") == "ios-fix-beta"
-    assert normalize_transform_mode("iosfixbeta") == "ios-fix-beta"
+    assert normalize_transform_mode("IOS-FIX-DNS") == "ios-fix-dns"
+    assert normalize_transform_mode("ios_fix_dns") == "ios-fix-dns"
+    assert normalize_transform_mode("iosfixdns") == "ios-fix-dns"
 
 
 def test_apply_ios_fix_changes_only_first_mixed() -> None:
@@ -379,7 +379,7 @@ def test_apply_ios_fix_leaves_socks_first_unchanged() -> None:
     assert result["inbounds"][0]["protocol"] == "socks"
 
 
-def test_apply_ios_fix_beta_injects_dns_proxy() -> None:
+def test_apply_ios_fix_dns_injects_dns_proxy() -> None:
     payload = {
         "remarks": "NL",
         "inbounds": [{"protocol": "mixed", "port": 10808}],
@@ -394,7 +394,7 @@ def test_apply_ios_fix_beta_injects_dns_proxy() -> None:
             ],
         },
     }
-    result = apply_ios_fix_beta(payload)
+    result = apply_ios_fix_dns(payload)
     # Checks standard ios_fix was applied
     assert result["inbounds"][0]["protocol"] == "socks"
     # Checks rules were injected
@@ -409,7 +409,7 @@ def test_apply_ios_fix_beta_injects_dns_proxy() -> None:
     assert rules[1] == {"network": "tcp,udp", "outboundTag": "proxy", "type": "field"}
 
 
-def test_apply_ios_fix_beta_handles_balancer() -> None:
+def test_apply_ios_fix_dns_handles_balancer() -> None:
     payload = {
         "remarks": "Auto",
         "inbounds": [{"protocol": "socks", "port": 10808}],
@@ -431,7 +431,7 @@ def test_apply_ios_fix_beta_handles_balancer() -> None:
             ],
         },
     }
-    result = apply_ios_fix_beta(payload)
+    result = apply_ios_fix_dns(payload)
     rules = result["routing"]["rules"]
     assert len(rules) == 2
     assert rules[0] == {
@@ -443,7 +443,7 @@ def test_apply_ios_fix_beta_handles_balancer() -> None:
     assert rules[1]["balancerTag"] == "balancer"
 
 
-def test_apply_ios_fix_beta_no_duplicate_injection() -> None:
+def test_apply_ios_fix_dns_no_duplicate_injection() -> None:
     payload = {
         "remarks": "NL",
         "inbounds": [{"protocol": "socks", "port": 10808}],
@@ -458,7 +458,7 @@ def test_apply_ios_fix_beta_no_duplicate_injection() -> None:
             ],
         },
     }
-    result = apply_ios_fix_beta(payload)
+    result = apply_ios_fix_dns(payload)
     rules = result["routing"]["rules"]
     assert len(rules) == 2
 
@@ -474,3 +474,44 @@ def test_ios_fix_mode_keeps_upstream_profiles(tmp_path: Path) -> None:
     remarks = [item["remarks"] for item in result]
     assert "hysteria-turn" in remarks
     assert "NL-WS" in remarks
+
+
+def test_apply_ios_fix_sanitizes_verify_peer_cert_by_name() -> None:
+    payload = {
+        "remarks": "Test TLS",
+        "inbounds": [{"port": 10808, "protocol": "mixed", "tag": "mixed"}],
+        "outbounds": [
+            {
+                "protocol": "vless",
+                "tag": "proxy",
+                "streamSettings": {
+                    "network": "ws",
+                    "security": "tls",
+                    "tlsSettings": {
+                        "alpn": ["http/1.1", "h2"],
+                        "verifyPeerCertByName": "0",
+                        "settings": {
+                            "fingerprint": "firefox",
+                        },
+                    },
+                },
+            },
+            {
+                "protocol": "vless",
+                "tag": "proxy-valid",
+                "streamSettings": {
+                    "security": "tls",
+                    "tlsSettings": {
+                        "verifyPeerCertByName": "caelixflow.com",
+                    },
+                },
+            },
+        ],
+    }
+    result = apply_ios_fix(payload)
+    out0_tls = result["outbounds"][0]["streamSettings"]["tlsSettings"]
+    assert "verifyPeerCertByName" not in out0_tls
+    assert out0_tls.get("fingerprint") == "firefox"
+
+    out1_tls = result["outbounds"][1]["streamSettings"]["tlsSettings"]
+    assert out1_tls.get("verifyPeerCertByName") == "caelixflow.com"

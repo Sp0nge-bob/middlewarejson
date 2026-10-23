@@ -14,6 +14,13 @@ from app.services.transform_service import TransformService
 from app.transformers.ios_fix import apply_ios_fix
 
 
+@pytest.mark.parametrize("value", ["ios-fix-beta", "ios_fix_beta", "IOSFIXBETA", "iosfix-beta"])
+def test_old_beta_names_resolve_to_dns(value: str) -> None:
+    assert normalize_transform_mode(value) == "ios-fix-dns"
+    assert resolve_transform_mode(Settings(transform_mode=value), None) == "ios-fix-dns"
+    assert resolve_transform_mode(Settings(), value) == "ios-fix-dns"
+
+
 def test_normalize_transform_mode_rejects_unknown() -> None:
     with pytest.raises(ValueError):
         normalize_transform_mode("invalid")
@@ -57,7 +64,7 @@ def test_transform_service_uses_database_mode_without_restart(tmp_path: Path) ->
     assert fixed[0]["inbounds"][0]["protocol"] == "socks"
     assert apply_ios_fix(payload)[0]["inbounds"][0]["protocol"] == "socks"
 
-    repo.set_setting(TRANSFORM_MODE_KEY, "ios-fix-beta")
+    repo.set_setting(TRANSFORM_MODE_KEY, "ios-fix-dns")
     beta_fixed = service.transform("sub", payload)
     assert beta_fixed[0]["inbounds"][0]["protocol"] == "socks"
     assert beta_fixed[0]["routing"]["rules"][0]["outboundTag"] == "proxy"

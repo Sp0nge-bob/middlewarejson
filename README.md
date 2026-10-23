@@ -8,6 +8,7 @@
 
 - **JSON-прокси** — relay подписки 3x-ui с заголовками (`Subscription-Userinfo` и др.)
 - **ios-fix** — `mixed` → `socks`, балансер панели под LibXray iOS (leastPing / leastLoad / roundRobin / random)
+- **ios-fix-dns** — все исправления ios-fix плюс TCP/UDP DNS на порт 53 через прокси/балансер (прежнее имя: ios-fix-beta)
 - **base64 навылет** — обычная подписка 3x-ui не трогается
 - **CLI** — режим, превью подписки, systemd
 - **Systemd** — установка и управление службой из CLI
@@ -66,7 +67,7 @@ python -m app.cli
 | # | Действие |
 |---|----------|
 | 1 | Обзор состояния |
-| 2 | Настройки агента / режим ios-fix или passthrough |
+| 2 | Настройки агента / режим ios-fix, ios-fix-dns или passthrough |
 | 3 | Служба systemd |
 | 4 | Проверить подписку |
 | 5 | Запуск uvicorn вручную |
@@ -74,6 +75,7 @@ python -m app.cli
 ```bash
 python -m app.cli settings show
 python -m app.cli settings transform-mode ios-fix
+python -m app.cli settings transform-mode ios-fix-dns
 python -m app.cli service status
 python -m app.cli service install --start
 ```
@@ -81,3 +83,9 @@ python -m app.cli service install --start
 ## Деплой
 
 - [docs/DEPLOY.md](docs/DEPLOY.md)
+
+## Версия для отката
+
+GitHub Release / тег `v1` сохраняет состояние до реализации БС-балансера,
+включая переименование `ios-fix-beta` в `ios-fix-dns`. Старые значения режима
+в `.env` и БД принимаются как алиасы нового имени.
