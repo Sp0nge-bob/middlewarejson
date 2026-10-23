@@ -29,6 +29,9 @@ from app.services.mode import (
     normalize_transform_mode,
     resolve_transform_mode,
 )
+from app.services.feature_settings import (
+    ALLOWLIST_BALANCER_KEY, normalize_feature_switch, resolve_allowlist_balancer,
+)
 
 app = typer.Typer(
     help="middlewarejson CLI — прослойка JSON-подписок 3x-ui для iOS/HAPP",
@@ -50,7 +53,7 @@ def _transform_mode_label(mode: str) -> str:
         return "ios-fix-dns — ios-fix + перехват DNS в прокси"
     if mode == "ios-fix":
         return "ios-fix — mixed→socks, балансер 3x-ui под iOS"
-    return "passthrough — подписка без изменений"
+    return "passthrough — без iOS-исправлений"
 
 
 def _resolved_transform_mode(repo: SettingsRepository) -> str:
@@ -71,7 +74,7 @@ def _do_edit_transform_mode(repo: SettingsRepository) -> None:
     print_field("Текущий режим", _transform_mode_label(current))
     print_menu_item(1, "ios-fix — socks вместо mixed, leastPing/leastLoad/roundRobin под iOS")
     print_menu_item(2, "ios-fix-dns — ios-fix + перехват DNS в прокси")
-    print_menu_item(3, "passthrough — подписка без изменений")
+    print_menu_item(3, "passthrough — без iOS-исправлений")
     print_menu_item(0, "Назад")
 
     choice = prompt_line("Выбор [0 — назад]")
@@ -106,6 +109,9 @@ def _do_script_settings_show() -> None:
     print_field("URL агента", f"http://{settings.agent_host}:{settings.agent_port}")
     print_field("Путь подписки (агент)", f"{agent_path}/<sub_id>")
     print_field("Режим трансформации", _transform_mode_label(mode))
+    print_field("БС-балансер", "включён" if resolve_allowlist_balancer(
+        settings, repo.get_setting(ALLOWLIST_BALANCER_KEY),
+    ) else "выключен")
     if db_mode:
         print_field("Режим в базе", db_mode)
     else:
@@ -137,6 +143,7 @@ def _run_settings_menu() -> None:
         print_section("Настройки")
         print_menu_item(1, "Агент и upstream")
         print_menu_item(2, "Режим трансформации")
+        print_menu_item(3, "БС-балансер — включить / выключить")
         print_menu_item(0, "Назад")
         choice = prompt_line("Выбор [0 — назад]")
         if choice == "0" or not choice:
@@ -145,6 +152,10 @@ def _run_settings_menu() -> None:
             _do_script_settings_show()
         elif choice == "2":
             _do_edit_transform_mode(_repo())
+        elif choice == "3":
+            repo = _repo()
+            enabled = resolve_allowlist_balancer(settings, repo.get_setting(ALLOWLIST_BALANCER_KEY))
+            _do_set_allowlist_balancer("off" if enabled else "on")
         else:
             print_warning("Неизвестный пункт")
 
@@ -218,6 +229,23 @@ def settings_transform_mode(
         return
     try:
         _do_set_transform_mode(mode)
+    except ValueError as exc:
+        print_error(str(exc))
+        raise typer.Exit(1) from exc
+
+
+def _do_set_allowlist_balancer(value: str) -> None:
+    enabled = normalize_feature_switch(value)
+    _repo().set_setting(ALLOWLIST_BALANCER_KEY, "true" if enabled else "false")
+    print_success("БС-балансер включён" if enabled else "БС-балансер выключен")
+    print_info("Действует сразу; режим трансформации не меняется")
+
+
+@settings_app.command("allowlist-balancer")
+def settings_allowlist_balancer(value: str = typer.Argument(..., help="on или off")) -> None:
+    """Включить или выключить отдельную функцию БС-балансера."""
+    try:
+        _do_set_allowlist_balancer(value)
     except ValueError as exc:
         print_error(str(exc))
         raise typer.Exit(1) from exc

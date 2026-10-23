@@ -48,12 +48,15 @@ def build_subscription_router(json_path: str) -> APIRouter:
         except UpstreamError:
             return PlainTextResponse(status_code=502, content="upstream unavailable")
 
+        error_headers = {
+            **_headers_without_content_type(result.headers), "Cache-Control": "no-store",
+        }
         if result.status_code == 404:
-            return Response(status_code=404)
+            return Response(status_code=404, headers=error_headers)
         if result.status_code >= 500:
-            return PlainTextResponse(status_code=502, content="upstream error")
+            return PlainTextResponse(status_code=502, content="upstream error", headers=error_headers)
         if result.status_code != 200:
-            return PlainTextResponse(status_code=result.status_code, content=result.body)
+            return PlainTextResponse(status_code=result.status_code, content=result.body, headers=error_headers)
 
         try:
             payload = try_load_json_subscription(result.body)

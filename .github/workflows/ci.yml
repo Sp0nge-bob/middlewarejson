@@ -15,4 +15,16 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-      - run: pytest -q
+      - name: Download reference Xray core
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p .test_tmp/xray-core
+          gh release download v26.9.9 --repo XTLS/Xray-core --pattern Xray-linux-64.zip --dir .test_tmp/xray-core
+          unzip -q .test_tmp/xray-core/Xray-linux-64.zip -d .test_tmp/xray-core
+          chmod +x .test_tmp/xray-core/xray
+      - name: Run all tests including reference core
+        env:
+          XRAY_TEST_BINARY: ${{ github.workspace }}/.test_tmp/xray-core/xray
+          DB_PATH: ${{ github.workspace }}/.test_tmp/http-tests.db
+        run: pytest -q

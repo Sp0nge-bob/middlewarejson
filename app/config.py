@@ -1,4 +1,7 @@
-from pydantic import Field
+import math
+from urllib.parse import urlsplit
+
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,10 +43,36 @@ class Settings(BaseSettings):
         default="ios-fix",
         validation_alias="TRANSFORM_MODE",
     )
+    allowlist_balancer_enabled: bool = Field(
+        default=True, validation_alias="ALLOWLIST_BALANCER_ENABLED",
+    )
+    allowlist_probe_url: str = Field(
+        default="https://www.gstatic.com/generate_204", validation_alias="ALLOWLIST_PROBE_URL",
+    )
+    allowlist_probe_interval_sec: float = Field(
+        default=20.0, ge=1, le=3600, validation_alias="ALLOWLIST_PROBE_INTERVAL_SEC",
+    )
     db_path: str = Field(
         default="data/middleware.db",
         validation_alias="DB_PATH",
     )
+
+    @field_validator("allowlist_probe_url")
+    @classmethod
+    def validate_probe_url(cls, value: str) -> str:
+        value = value.strip()
+        parsed = urlsplit(value)
+        if any(c.isspace() for c in value) or parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.fragment:
+            raise ValueError("ALLOWLIST_PROBE_URL must be HTTPS without credentials or fragment")
+        parsed.port  # Also reject malformed/out-of-range ports.
+        return value
+
+    @field_validator("allowlist_probe_interval_sec")
+    @classmethod
+    def validate_probe_interval(cls, value: float) -> float:
+        if not math.isfinite(value):
+            raise ValueError("probe interval must be finite")
+        return value
 
     def resolved_agent_json_path(self) -> str:
         explicit = self.agent_json_path.strip()

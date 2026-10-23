@@ -1,0 +1,437 @@
+[
+  {
+    "remarks": "[A] Обычные сервера",
+    "dns": {
+      "tag": "dns_out",
+      "queryStrategy": "UseIP",
+      "servers": [
+        {
+          "address": "8.8.8.8",
+          "skipFallback": false
+        }
+      ]
+    },
+    "inbounds": [
+      {
+        "listen": "127.0.0.1",
+        "port": 10808,
+        "protocol": "socks",
+        "settings": {
+          "auth": "noauth",
+          "udp": true,
+          "userLevel": 8
+        },
+        "sniffing": {
+          "destOverride": [
+            "http",
+            "tls",
+            "quic",
+            "fakedns"
+          ],
+          "enabled": true
+        },
+        "tag": "mixed"
+      },
+      {
+        "listen": "127.0.0.1",
+        "port": 10809,
+        "protocol": "http",
+        "settings": {
+          "userLevel": 8
+        },
+        "tag": "http"
+      }
+    ],
+    "log": {
+      "loglevel": "warning"
+    },
+    "outbounds": [
+      {
+        "tag": "bal-12-vless",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "a1.example.com",
+              "port": 443,
+              "users": [
+                {
+                  "id": "00000000-0000-0000-0000-000000000001",
+                  "encryption": "none",
+                  "level": 8
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "ws",
+          "security": "tls",
+          "tlsSettings": {
+            "serverName": "edge.example.com",
+            "alpn": [
+              "http/1.1"
+            ],
+            "fingerprint": "firefox"
+          },
+          "wsSettings": {
+            "path": "/vpn-ws",
+            "headers": {
+              "Host": "edge.example.com"
+            }
+          }
+        }
+      },
+      {
+        "tag": "bal-12-vless-2",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "a2.example.com",
+              "port": 443,
+              "users": [
+                {
+                  "id": "00000000-0000-0000-0000-000000000001",
+                  "encryption": "none",
+                  "level": 8
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "grpc",
+          "security": "tls",
+          "tlsSettings": {
+            "serverName": "edge.example.com",
+            "alpn": [
+              "h2"
+            ],
+            "fingerprint": "firefox"
+          },
+          "grpcSettings": {
+            "serviceName": "vpn-grpc",
+            "multiMode": false
+          }
+        }
+      },
+      {
+        "tag": "bal-12-vless-3",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "a3.example.com",
+              "port": 443,
+              "users": [
+                {
+                  "id": "00000000-0000-0000-0000-000000000001",
+                  "encryption": "none",
+                  "level": 8
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "xhttp",
+          "security": "tls",
+          "tlsSettings": {
+            "serverName": "edge.example.com",
+            "alpn": [
+              "h2"
+            ],
+            "fingerprint": "firefox"
+          },
+          "xhttpSettings": {
+            "host": "edge.example.com",
+            "path": "/vpn-xhttp",
+            "mode": "packet-up"
+          }
+        }
+      },
+      {
+        "tag": "direct",
+        "protocol": "freedom",
+        "settings": {
+          "redirect": "",
+          "noises": []
+        }
+      },
+      {
+        "tag": "block",
+        "protocol": "blackhole",
+        "settings": {
+          "response": {
+            "type": "http"
+          }
+        }
+      }
+    ],
+    "policy": {
+      "levels": {
+        "8": {
+          "connIdle": 300,
+          "downlinkOnly": 1,
+          "handshake": 4,
+          "uplinkOnly": 1
+        }
+      },
+      "system": {
+        "statsOutboundUplink": true,
+        "statsOutboundDownlink": true
+      }
+    },
+    "routing": {
+      "domainStrategy": "AsIs",
+      "rules": [
+        {
+          "type": "field",
+          "domain": [
+            "full:direct.example"
+          ],
+          "outboundTag": "direct"
+        },
+        {
+          "type": "field",
+          "domain": [
+            "full:block.example"
+          ],
+          "outboundTag": "block"
+        },
+        {
+          "type": "field",
+          "network": "tcp,udp",
+          "balancerTag": "balancer"
+        }
+      ],
+      "balancers": [
+        {
+          "tag": "balancer",
+          "selector": [
+            "bal-12-"
+          ],
+          "strategy": {
+            "type": "leastPing"
+          },
+          "fallbackTag": "bal-12-vless"
+        }
+      ]
+    },
+    "stats": {},
+    "burstObservatory": {
+      "subjectSelector": [
+        "bal-12-"
+      ],
+      "pingConfig": {
+        "destination": "https://www.google.com/generate_204",
+        "connectivity": "",
+        "interval": "1m",
+        "sampling": 2,
+        "timeout": "5s",
+        "httpMethod": "HEAD"
+      }
+    }
+  },
+  {
+    "remarks": "[B] БС сервера",
+    "dns": {
+      "tag": "dns_out",
+      "queryStrategy": "UseIP",
+      "servers": [
+        {
+          "address": "8.8.8.8",
+          "skipFallback": false
+        }
+      ]
+    },
+    "inbounds": [
+      {
+        "listen": "127.0.0.1",
+        "port": 10808,
+        "protocol": "socks",
+        "settings": {
+          "auth": "noauth",
+          "udp": true,
+          "userLevel": 8
+        },
+        "sniffing": {
+          "destOverride": [
+            "http",
+            "tls",
+            "quic",
+            "fakedns"
+          ],
+          "enabled": true
+        },
+        "tag": "mixed"
+      },
+      {
+        "listen": "127.0.0.1",
+        "port": 10809,
+        "protocol": "http",
+        "settings": {
+          "userLevel": 8
+        },
+        "tag": "http"
+      }
+    ],
+    "log": {
+      "loglevel": "warning"
+    },
+    "outbounds": [
+      {
+        "tag": "bal-13-vless",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "b1.example.com",
+              "port": 443,
+              "users": [
+                {
+                  "id": "00000000-0000-0000-0000-000000000001",
+                  "encryption": "none",
+                  "level": 8
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "ws",
+          "security": "tls",
+          "tlsSettings": {
+            "serverName": "edge.example.com",
+            "alpn": [
+              "http/1.1"
+            ],
+            "fingerprint": "firefox"
+          },
+          "wsSettings": {
+            "path": "/vpn-ws",
+            "headers": {
+              "Host": "edge.example.com"
+            }
+          }
+        }
+      },
+      {
+        "tag": "bal-13-vless-2",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "b2.example.com",
+              "port": 443,
+              "users": [
+                {
+                  "id": "00000000-0000-0000-0000-000000000001",
+                  "encryption": "none",
+                  "level": 8
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "grpc",
+          "security": "tls",
+          "tlsSettings": {
+            "serverName": "edge.example.com",
+            "alpn": [
+              "h2"
+            ],
+            "fingerprint": "firefox"
+          },
+          "grpcSettings": {
+            "serviceName": "vpn-grpc",
+            "multiMode": false
+          }
+        }
+      },
+      {
+        "tag": "direct",
+        "protocol": "freedom",
+        "settings": {
+          "redirect": "",
+          "noises": []
+        }
+      },
+      {
+        "tag": "block",
+        "protocol": "blackhole",
+        "settings": {
+          "response": {
+            "type": "http"
+          }
+        }
+      }
+    ],
+    "policy": {
+      "levels": {
+        "8": {
+          "connIdle": 300,
+          "downlinkOnly": 1,
+          "handshake": 4,
+          "uplinkOnly": 1
+        }
+      },
+      "system": {
+        "statsOutboundUplink": true,
+        "statsOutboundDownlink": true
+      }
+    },
+    "routing": {
+      "domainStrategy": "AsIs",
+      "rules": [
+        {
+          "type": "field",
+          "domain": [
+            "full:direct.example"
+          ],
+          "outboundTag": "direct"
+        },
+        {
+          "type": "field",
+          "domain": [
+            "full:block.example"
+          ],
+          "outboundTag": "block"
+        },
+        {
+          "type": "field",
+          "network": "tcp,udp",
+          "balancerTag": "balancer"
+        }
+      ],
+      "balancers": [
+        {
+          "tag": "balancer",
+          "selector": [
+            "bal-13-"
+          ],
+          "strategy": {
+            "type": "leastPing"
+          },
+          "fallbackTag": "bal-13-vless"
+        }
+      ]
+    },
+    "stats": {},
+    "burstObservatory": {
+      "subjectSelector": [
+        "bal-13-"
+      ],
+      "pingConfig": {
+        "destination": "https://www.google.com/generate_204",
+        "connectivity": "",
+        "interval": "1m",
+        "sampling": 2,
+        "timeout": "5s",
+        "httpMethod": "HEAD"
+      }
+    }
+  }
+]

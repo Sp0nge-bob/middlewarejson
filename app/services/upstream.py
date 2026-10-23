@@ -7,7 +7,10 @@ from app.config import Settings
 
 logger = logging.getLogger(__name__)
 
-PASSTHROUGH_REQUEST_HEADERS = ("user-agent", "accept", "accept-language")
+PASSTHROUGH_REQUEST_HEADERS = (
+    "user-agent", "accept", "accept-language", "x-hwid", "x-device-os",
+    "x-ver-os", "x-device-model",
+)
 JSON_CLIENT_USER_AGENT = "Happ/1.0"
 _TOOL_USER_AGENTS = ("python-httpx", "python-requests", "aiohttp")
 PASSTHROUGH_RESPONSE_HEADERS = (
@@ -20,6 +23,16 @@ PASSTHROUGH_RESPONSE_HEADERS = (
     "announce",
     "routing-enable",
     "routing",
+    "providerid",
+    "hide-settings",
+    "dns-from-json-enable",
+    "fallback-url",
+    "new-url",
+    "new-domain",
+    "x-hwid-active",
+    "x-hwid-not-supported",
+    "x-hwid-limit",
+    "x-hwid-max-devices-reached",
 )
 
 

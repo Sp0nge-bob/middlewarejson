@@ -9,6 +9,7 @@ from app.db.repository import SettingsRepository
 from app.routes.subscription import build_subscription_router
 from app.services.factory import build_transform_service
 from app.services.mode import TRANSFORM_MODE_KEY, resolve_transform_mode
+from app.services.feature_settings import ALLOWLIST_BALANCER_KEY, resolve_allowlist_balancer
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,6 +25,9 @@ def _log_transform_readiness() -> None:
     upstream_base = settings.resolved_upstream_base_url()
     upstream_path = settings.upstream_json_path.rstrip("/")
     logger.info("TRANSFORM_MODE=%s", mode)
+    logger.info("ALLOWLIST_BALANCER_ENABLED=%s", resolve_allowlist_balancer(
+        settings, repo.get_setting(ALLOWLIST_BALANCER_KEY),
+    ))
     logger.info("upstream target: %s%s/<sub_id>", upstream_base, upstream_path)
     if not upstream_base:
         logger.warning("UPSTREAM_BASE_URL пуст — задайте URL sub-сервера 3x-ui в .env")
@@ -35,7 +39,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="middlewarejson", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="middlewarejson", version="1.1.0", lifespan=lifespan)
 app.state.settings = settings
 app.state.transform_service = build_transform_service(settings)
 app.include_router(build_subscription_router(settings.resolved_agent_json_path()))

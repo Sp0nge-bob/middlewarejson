@@ -33,6 +33,7 @@ from app.models.subscription import (
     validate_sub_id,
 )
 from app.services.mode import TRANSFORM_MODE_KEY, resolve_transform_mode
+from app.services.feature_settings import ALLOWLIST_BALANCER_KEY, resolve_allowlist_balancer
 from app.services.systemd_service import (
     get_service_scope,
     is_linux,
@@ -42,7 +43,7 @@ from app.services.systemd_service import (
 from app.services.transform_service import TransformService
 from app.services.upstream import UpstreamClient, UpstreamError
 
-_SYSTEM_PROTOCOLS = frozenset({"freedom", "blackhole", "dns"})
+_SYSTEM_PROTOCOLS = frozenset({"freedom", "blackhole", "dns", "loopback"})
 
 
 def _repo() -> SettingsRepository:
@@ -54,7 +55,7 @@ def _transform_mode_label(mode: str) -> str:
         return "ios-fix-dns — ios-fix + перехват DNS в прокси"
     if mode == "ios-fix":
         return "ios-fix — mixed→socks, балансер 3x-ui под iOS"
-    return "passthrough — без изменений"
+    return "passthrough — без iOS-исправлений"
 
 
 def _probe_health() -> tuple[bool, str]:
@@ -112,6 +113,9 @@ def print_dashboard() -> None:
     console.print()
     print_section("Обзор")
     print_field("Режим", _transform_mode_label(mode))
+    print_field("БС-балансер", "включён" if resolve_allowlist_balancer(
+        settings, repo.get_setting(ALLOWLIST_BALANCER_KEY),
+    ) else "выключен")
     print_field("Агент", f"http://{settings.agent_host}:{settings.agent_port}{agent_path}/<sub_id>")
     print_field("Upstream", f"{upstream_base}{upstream_path}/<sub_id>" if upstream_base else "—")
     print_field("Служба", _service_label())

@@ -8,6 +8,7 @@
      (3x-ui#2724: fallbackTag registers Observatory)
    Ordinary single-proxy profiles are not rewritten.
 3. Strip sniffing fakedns (no fakedns inbound in 3x-ui JSON).
+Composed allowlist profiles retain their validated graph, fallback and DNS order.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import copy
 from typing import Any
 
 from app.models.subscription import SubscriptionPayload
+from app.features.allowlist_balancer import is_allowlist_profile, validate_allowlist_profile
 
 _PROBE_URL = "https://www.gstatic.com/generate_204"
 _PROBE_INTERVAL = "20s"
@@ -24,7 +26,7 @@ _BURST_SAMPLING = 2
 _LEAST_PING_TYPES = frozenset({"leastping", "least_ping"})
 _LEAST_LOAD_TYPES = frozenset({"leastload", "least_load"})
 _ROUND_ROBIN_TYPES = frozenset({"roundrobin", "round_robin"})
-_SYSTEM_PROTOCOLS = frozenset({"freedom", "blackhole", "dns"})
+_SYSTEM_PROTOCOLS = frozenset({"freedom", "blackhole", "dns", "loopback"})
 
 
 def apply_ios_fix(payload: SubscriptionPayload) -> SubscriptionPayload:
@@ -56,6 +58,9 @@ def _process_ios_fix(payload: SubscriptionPayload, *, inject_routing: bool) -> S
 
 
 def _inject_routing_rules(config: dict[str, Any]) -> None:
+    if is_allowlist_profile(config):
+        validate_allowlist_profile(config)
+        return  # The graph already includes DNS after its service routes.
     routing = config.get("routing")
     if not isinstance(routing, dict):
         routing = {"domainStrategy": "AsIs", "rules": []}
@@ -131,6 +136,18 @@ def _fix_first_inbound(config: dict[str, Any]) -> None:
         first["protocol"] = "socks"
     if str(first.get("protocol", "")).strip().lower() == "socks" and first.get("tag") == "mixed":
         first["tag"] = "socks"
+        routing = config.get("routing")
+        if isinstance(routing, dict) and isinstance(routing.get("rules"), list):
+            for rule in routing["rules"]:
+                if not isinstance(rule, dict):
+                    continue
+                tags = rule.get("inboundTag")
+                if isinstance(tags, list):
+                    rule["inboundTag"] = ["socks" if tag == "mixed" else tag for tag in tags]
+                elif tags == "mixed":
+                    rule["inboundTag"] = "socks"
+    if str(first.get("protocol", "")).strip().lower() == "socks":
+        first["listen"] = "127.0.0.1"
 
 
 def _strip_fakedns(config: dict[str, Any]) -> None:
@@ -151,10 +168,17 @@ def _strip_fakedns(config: dict[str, Any]) -> None:
 def _flatten_tls_block(block: dict[str, Any]) -> None:
     nested = block.pop("settings", None)
     if isinstance(nested, dict):
-        if not block.get("fingerprint") and nested.get("fingerprint"):
-            block["fingerprint"] = nested["fingerprint"]
-        if not block.get("verifyPeerCertByName") and nested.get("verifyPeerCertByName"):
-            block["verifyPeerCertByName"] = nested["verifyPeerCertByName"]
+        for key, value in nested.items():
+            if key not in block or block[key] is None:
+                block[key] = copy.deepcopy(value)
+
+    # v26.9.9 parses these fields as comma-separated strings, not arrays.
+    for key in ("pinnedPeerCertSha256", "verifyPeerCertByName"):
+        value = block.get(key)
+        if isinstance(value, list):
+            if any(not isinstance(item, str) for item in value):
+                raise ValueError(f"invalid TLS {key}")
+            block[key] = ",".join(value)
 
     # Очищаем фиктивные значения verifyPeerCertByName ("0", "false", "none", ""),
     # из-за которых Xray требует совпадения SAN сертификата с "0" и ломает TLS в Happ.
@@ -285,6 +309,9 @@ def _fix_panel_balancer(config: dict[str, Any]) -> None:
 
     Do not flatten members or rewrite ordinary proxies (stats/dns/policy).
     """
+    if is_allowlist_profile(config):
+        validate_allowlist_profile(config)
+        return  # Keep the monitored roundRobin fallback and shared observer.
     routing = config.get("routing")
     if not isinstance(routing, dict):
         return

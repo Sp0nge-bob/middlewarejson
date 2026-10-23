@@ -3,8 +3,10 @@ import logging
 from app.config import Settings
 from app.db.database import Database
 from app.db.repository import SettingsRepository
+from app.features.allowlist_balancer import compose_allowlist_balancer
 from app.models.subscription import SubscriptionPayload
 from app.services.mode import TRANSFORM_MODE_KEY, resolve_transform_mode
+from app.services.feature_settings import ALLOWLIST_BALANCER_KEY, resolve_allowlist_balancer
 from app.services.transformer import PassthroughTransformer
 from app.transformers.ios_fix import apply_ios_fix, apply_ios_fix_dns
 
@@ -26,6 +28,13 @@ class TransformService:
     def transform(self, sub_id: str, payload: SubscriptionPayload) -> SubscriptionPayload:
         mode = self._resolved_mode()
         raw = self._passthrough.transform(payload)
+        if resolve_allowlist_balancer(
+            self._settings, self._repository.get_setting(ALLOWLIST_BALANCER_KEY),
+        ):
+            raw = compose_allowlist_balancer(
+                raw, probe_url=self._settings.allowlist_probe_url,
+                probe_interval=f"{self._settings.allowlist_probe_interval_sec:g}s",
+            )
         if mode == "ios-fix":
             logger.info("ios-fix for sub_id=%s", sub_id)
             return apply_ios_fix(raw)

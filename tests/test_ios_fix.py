@@ -515,3 +515,24 @@ def test_apply_ios_fix_sanitizes_verify_peer_cert_by_name() -> None:
 
     out1_tls = result["outbounds"][1]["streamSettings"]["tlsSettings"]
     assert out1_tls.get("verifyPeerCertByName") == "caelixflow.com"
+
+
+def test_ios_normalization_preserves_nested_tls_verification_and_ech() -> None:
+    payload = {
+        "inbounds": [{"protocol": "mixed", "tag": "mixed", "port": 10808}],
+        "routing": {"rules": [{"inboundTag": ["mixed", "http"], "outboundTag": "proxy"}]},
+        "outbounds": [{"tag": "proxy", "protocol": "vless", "streamSettings": {
+            "tlsSettings": {"allowInsecure": False, "settings": {
+                "fingerprint": "firefox", "allowInsecure": True, "echConfigList": "ECH",
+                "pinnedPeerCertSha256": ["pin1", "pin2"],
+                "verifyPeerCertByName": ["one.example", "two.example"],
+            }},
+        }}],
+    }
+    result = apply_ios_fix(payload)
+    tls = result["outbounds"][0]["streamSettings"]["tlsSettings"]
+    assert tls == {"allowInsecure": False, "fingerprint": "firefox", "echConfigList": "ECH",
+                   "pinnedPeerCertSha256": "pin1,pin2", "verifyPeerCertByName": "one.example,two.example"}
+    assert result["inbounds"][0]["listen"] == "127.0.0.1"
+    assert result["routing"]["rules"][0]["inboundTag"] == ["socks", "http"]
+    assert payload["routing"]["rules"][0]["inboundTag"] == ["mixed", "http"]
