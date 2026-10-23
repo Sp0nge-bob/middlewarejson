@@ -129,6 +129,10 @@ JSON-escape позволяет передать точное Unicode-имя ASCI
 
 ### Описание профиля Happ
 
+**Уточнение 2026-10-24:** пользователь не наблюдает подпись на Android
+4.7.1(1999), ProviderID не настроен. Отправка поля не гарантирует отображение.
+Задача отложена; [результаты исследования и методы решения](HAPP_BALANCER_DESCRIPTION_ISSUE.md).
+
 Добавлена независимая настройка ALLOWLIST_BALANCER_DESCRIPTION и ключ SQLite
 allowlist_balancer_description. CLI: `settings allowlist-balancer-description`,
 интерактивные настройки: пункт 6. Значение `auto` (по умолчанию, также пустая

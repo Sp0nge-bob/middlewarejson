@@ -454,6 +454,15 @@ JSON endpoint v3.10.2 может отдать JSON с Content-Type=text/plain; v
 Наличие кода в ветке Happ-proxy/Xray-core main не устанавливает версию ядра,
 которая встроена в конкретный установленный релиз Happ.
 
+## Отложенная задача: техническая подпись Happ
+
+Описание отложено пользователем 2026-10-24. См.
+[проблему, доказательства и варианты](HAPP_BALANCER_DESCRIPTION_ISSUE.md).
+Текущий первый blackhole сохраняется. Перестановка реального A на первое место
+допустима только как отдельный прототип с проверкой поведения выхода по умолчанию,
+всех отказов и DNS в passthrough / IOS-FIX / IOS-FIX-DNS. Реализация meta.serverDescription
+не гарантирует отображение без необходимых возможностей ProviderID в Happ.
+
 ## Источники
 
 - https://xtls.github.io/en/config/outbounds/loopback.html
