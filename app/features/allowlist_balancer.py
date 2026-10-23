@@ -11,6 +11,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from app.models.subscription import SubscriptionPayload
+from app.text_encoding import repair_mojibake
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ def _roles(remarks: Any) -> set[str]:
 def normalize_profile_name(value: str) -> str:
     if not isinstance(value, str):
         raise ValueError("название должно быть строкой")
-    value = value.strip()
+    value = repair_mojibake(value).strip()
     if not value or any(ord(c) < 32 or ord(c) == 127 for c in value):
         raise ValueError("название не должно быть пустым или содержать управляющие символы")
     if _roles(value):

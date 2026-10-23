@@ -1,3 +1,5 @@
+import json
+
 import typer
 from rich.markup import escape
 
@@ -290,9 +292,19 @@ def _do_set_allowlist_flag(value: str) -> None:
 
 
 @settings_app.command("allowlist-balancer-name")
-def settings_allowlist_name(value: str = typer.Argument(..., help="Имя итогового профиля в Happ")) -> None:
+def settings_allowlist_name(
+    value: str = typer.Argument(..., help="Имя итогового профиля в Happ"),
+    unicode_escaped: bool = typer.Option(
+        False, "--unicode-escaped", help="Имя с JSON-escape \\uXXXX для терминалов с неверной кодировкой",
+    ),
+) -> None:
     """Задать отображаемое имя составного профиля."""
     try:
+        if unicode_escaped:
+            try:
+                value = json.loads(f'"{value}"')
+            except json.JSONDecodeError as exc:
+                raise ValueError("некорректное имя с JSON-escape: используйте \\uXXXX") from exc
         _do_set_allowlist_name(value)
     except ValueError as exc:
         print_error(str(exc))

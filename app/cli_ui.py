@@ -8,6 +8,8 @@ import sys
 from rich.console import Console
 from rich.panel import Panel
 
+from app.text_encoding import repair_mojibake as _repair_mojibake
+
 console = Console()
 
 _YES = frozenset({"y", "yes", "д", "да"})
@@ -18,32 +20,6 @@ CANCEL_HINT = "exit — отмена"
 
 def is_exit_choice(value: str) -> bool:
     return value.strip().casefold() in _EXIT_ALIASES
-
-
-def _cyrillic_letter_count(text: str) -> int:
-    return sum(1 for char in text if "\u0400" <= char <= "\u04ff")
-
-
-def _looks_like_mojibake(text: str) -> bool:
-    return any(marker in text for marker in ("Рђ", "РІ", "Рѕ", "СЂ", "С‡", "СЏ"))
-
-
-def _repair_mojibake(text: str) -> str:
-    """UTF-8, ошибочно прочитанный как cp1251/latin-1 → нормальная кириллица."""
-    if not text:
-        return text
-    for encoding in ("cp1251", "latin-1"):
-        try:
-            repaired = text.encode(encoding).decode("utf-8")
-        except (UnicodeDecodeError, UnicodeEncodeError):
-            continue
-        if not repaired or repaired == text:
-            continue
-        if _looks_like_mojibake(text) or _cyrillic_letter_count(repaired) > _cyrillic_letter_count(
-            text
-        ):
-            return repaired
-    return text
 
 
 def _decode_bytes(data: bytes) -> str:
