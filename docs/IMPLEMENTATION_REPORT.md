@@ -126,3 +126,21 @@ $env:DB_PATH = 'E:\AIPROJECTS\middlewarejson\.test_tmp\http-tests.db'
 У команды `settings allowlist-balancer-name` добавлен явный `--unicode-escaped`:
 JSON-escape позволяет передать точное Unicode-имя ASCII-командой независимо
 от кодировки терминала. Обычный ввод не интерпретирует escape-последовательности.
+
+### Описание профиля Happ
+
+Добавлена независимая настройка ALLOWLIST_BALANCER_DESCRIPTION и ключ SQLite
+allowlist_balancer_description. CLI: `settings allowlist-balancer-description`,
+интерактивные настройки: пункт 6. Значение `auto` (по умолчанию, также пустая
+строка) сохраняет meta.serverDescription исходного A; при отсутствии описания
+строит подпись вида `VLESS / WS / TLS | JSON` из первого узла A. Свой текст
+передаётся напрямую в meta.serverDescription с общей обработкой кодировки.
+Поддерживается явный флаг --unicode-escaped. Изменения через SQLite применяются
+к следующим ответам подписки; .env требует перезапуска службы.
+
+Первый blackhole и граф A → Б сохранены. Различие serverDescription между
+исходными A/B допустимо; остальные поля meta должны совпадать и сохраняются.
+Подпись статична и не отражает выбранный наблюдателем узел. Трансформации
+IOS-FIX / IOS-FIX-DNS сохраняют meta как часть исходного документа.
+Используется документированное Happ поле:
+https://github.com/HappDev/happ_su/blob/main/dev-docs/examples-of-links-and-parameters.md#5-visualization-and-metadata

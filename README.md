@@ -82,6 +82,8 @@ python -m app.cli settings allowlist-balancer on
 python -m app.cli settings allowlist-balancer off
 python -m app.cli settings allowlist-balancer-name "Мой VPN"
 python -m app.cli settings allowlist-balancer-flag RU
+python -m app.cli settings allowlist-balancer-description "VLESS / WS / TLS | JSON"
+python -m app.cli settings allowlist-balancer-description auto
 python -m app.cli service status
 python -m app.cli service install --start
 ```
@@ -111,6 +113,16 @@ python -m app.cli service install --start
 `python -m app.cli settings allowlist-balancer-name --unicode-escaped '\u0410\u0432\u0442\u043e'`
 задаёт имя «Авто», используя только ASCII в команде. Без этого флага escape-последовательности
 в имени не интерпретируются.
+
+Строка под названием передаётся через `meta.serverDescription`. По умолчанию
+`ALLOWLIST_BALANCER_DESCRIPTION=auto`: сохраняется описание исходного профиля A,
+а если его нет — формируется техническая подпись первого узла A, например
+`VLESS / WS / TLS | JSON`. Это статическая подпись профиля, не индикатор текущего
+выбранного сервера. Свой текст задаётся командой `settings allowlist-balancer-description`
+или в «Настройки → 6. БС-балансер — описание профиля»; `auto` возвращает автоматическую
+подпись. Для этой команды также доступен `--unicode-escaped`. SQLite имеет приоритет
+над .env; изменение видно после обновления подписки в Happ.
+
 leastPing выбирает минимальную измеренную задержку внутри активного пула.
 Даже медленный живой A имеет приоритет перед Б. На запуске непроверенные A
 остаются кандидатами; переключение происходит после результатов клиентских проб,

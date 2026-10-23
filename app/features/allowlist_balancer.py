@@ -34,7 +34,7 @@ _PROXY_PROTOCOLS = {
     "hysteria", "wireguard", "masque",
 }
 _MARKER = re.compile(r"\[([aаbв])\]", re.IGNORECASE)
-_PROFILE_FIELDS = {"remarks", "outbounds", "routing", "observatory", "burstObservatory"}
+_PROFILE_FIELDS = {"remarks", "outbounds", "routing", "observatory", "burstObservatory", "meta"}
 
 
 class InvalidPool(ValueError):
@@ -77,6 +77,36 @@ def normalize_profile_flag(value: str) -> str:
     if not re.fullmatch(r"[A-Za-z]{2}", value):
         raise ValueError("укажите код страны RU/NL/DE или off для удаления флага")
     return value.upper()
+
+
+def normalize_profile_description(value: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError("описание должно быть строкой")
+    value = repair_mojibake(value).strip()
+    if any(ord(c) < 32 or ord(c) == 127 for c in value):
+        raise ValueError("описание не должно содержать управляющие символы")
+    return "auto" if not value or value.lower() == "auto" else value
+
+
+def _source_meta(config: dict[str, Any]) -> dict[str, Any]:
+    meta = config.get("meta", {})
+    if not isinstance(meta, dict):
+        raise InvalidPool("source meta must be an object")
+    return meta
+
+
+def _automatic_description(pool: _Pool) -> str:
+    existing = _source_meta(pool.config).get("serverDescription")
+    if isinstance(existing, str) and existing.strip():
+        return existing
+    outbound = pool.members[0]
+    stream = outbound.get("streamSettings", {})
+    if not isinstance(stream, dict):
+        stream = {}
+    protocol = outbound["protocol"].upper()
+    network = str(stream.get("network") or "tcp").upper()
+    security = str(stream.get("security") or "none").upper()
+    return f"{protocol} / {network} / {security} | JSON"
 
 
 def format_profile_name(name: str, flag_code: str = "") -> str:
@@ -296,11 +326,15 @@ def validate_allowlist_profile(config: dict[str, Any]) -> None:
         raise InvalidPool("observer must cover exactly A and B")
 
 
-def _build(a: _Pool, b: _Pool, probe_url: str, interval: str, profile_name: str) -> dict[str, Any]:
+def _build(a: _Pool, b: _Pool, probe_url: str, interval: str, profile_name: str, description: str) -> dict[str, Any]:
     common_a = {k: v for k, v in a.config.items() if k not in _PROFILE_FIELDS}
     common_b = {k: v for k, v in b.config.items() if k not in _PROFILE_FIELDS}
     if common_a != common_b or a.routing_options != b.routing_options or a.rules != b.rules:
         raise InvalidPool("source DNS/inbound/policy/routing templates differ")
+    meta_a, meta_b = _source_meta(a.config), _source_meta(b.config)
+    if ({k: v for k, v in meta_a.items() if k != "serverDescription"}
+            != {k: v for k, v in meta_b.items() if k != "serverDescription"}):
+        raise InvalidPool("source metadata differs beyond serverDescription")
     if {_identity(ob) for ob in a.members} & {_identity(ob) for ob in b.members}:
         raise InvalidPool("the same proxy connection appears in both pools")
     system: dict[str, dict[str, Any]] = {}
@@ -317,6 +351,10 @@ def _build(a: _Pool, b: _Pool, probe_url: str, interval: str, profile_name: str)
             raise InvalidPool("selector changes membership after composition")
     result = copy.deepcopy(a.config)
     result["remarks"] = profile_name
+    result["meta"] = {
+        **copy.deepcopy(meta_a),
+        "serverDescription": _automatic_description(a) if description == "auto" else description,
+    }
     result["outbounds"] = [
         {"tag": UNAVAILABLE, "protocol": "blackhole", "settings": {}},
         *copy.deepcopy(merged),
@@ -353,7 +391,7 @@ def _build(a: _Pool, b: _Pool, probe_url: str, interval: str, profile_name: str)
 def compose_allowlist_balancer(
     payload: SubscriptionPayload, *, probe_url: str = DEFAULT_PROBE_URL,
     probe_interval: str = DEFAULT_PROBE_INTERVAL,
-    profile_name: str = PROFILE_NAME, flag_code: str = "",
+    profile_name: str = PROFILE_NAME, flag_code: str = "", description: str = "auto",
 ) -> SubscriptionPayload:
     """Replace one valid marked pair; preserve unrelated profiles and input.
 
@@ -382,10 +420,11 @@ def compose_allowlist_balancer(
         return payload
     _validate_probe(probe_url, probe_interval)
     label = format_profile_name(profile_name, flag_code)
+    description = normalize_profile_description(description)
     ia, ca = marked["A"][0]
     ib, cb = marked["B"][0]
     try:
-        composed = _build(_read_pool(ca), _read_pool(cb), probe_url, probe_interval, label)
+        composed = _build(_read_pool(ca), _read_pool(cb), probe_url, probe_interval, label, description)
     except InvalidPool as exc:
         logger.warning("allowlist balancer skipped: %s", exc)
         return payload

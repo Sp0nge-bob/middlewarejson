@@ -36,8 +36,11 @@ from app.services.feature_settings import (
     ALLOWLIST_BALANCER_KEY, normalize_feature_switch, resolve_allowlist_balancer,
     ALLOWLIST_BALANCER_NAME_KEY, ALLOWLIST_BALANCER_FLAG_KEY,
     resolve_allowlist_name, resolve_allowlist_flag,
+    ALLOWLIST_BALANCER_DESCRIPTION_KEY, resolve_allowlist_description,
 )
-from app.features.allowlist_balancer import normalize_profile_name, normalize_profile_flag, format_profile_name
+from app.features.allowlist_balancer import (
+    normalize_profile_name, normalize_profile_flag, format_profile_name, normalize_profile_description,
+)
 
 app = typer.Typer(
     help="middlewarejson CLI — прослойка JSON-подписок 3x-ui для iOS/HAPP",
@@ -122,6 +125,9 @@ def _do_script_settings_show() -> None:
         resolve_allowlist_name(settings, repo.get_setting(ALLOWLIST_BALANCER_NAME_KEY)),
         resolve_allowlist_flag(settings, repo.get_setting(ALLOWLIST_BALANCER_FLAG_KEY)),
     )))
+    print_field("Описание БС", escape(resolve_allowlist_description(
+        settings, repo.get_setting(ALLOWLIST_BALANCER_DESCRIPTION_KEY),
+    )))
     if db_mode:
         print_field("Режим в базе", db_mode)
     else:
@@ -156,6 +162,7 @@ def _run_settings_menu() -> None:
         print_menu_item(3, "БС-балансер — включить / выключить")
         print_menu_item(4, "БС-балансер — название профиля")
         print_menu_item(5, "БС-балансер — флаг страны")
+        print_menu_item(6, "БС-балансер — описание профиля")
         print_menu_item(0, "Назад")
         choice = prompt_line("Выбор [0 — назад]")
         if choice == "0" or not choice:
@@ -168,16 +175,20 @@ def _run_settings_menu() -> None:
             repo = _repo()
             enabled = resolve_allowlist_balancer(settings, repo.get_setting(ALLOWLIST_BALANCER_KEY))
             _do_set_allowlist_balancer("off" if enabled else "on")
-        elif choice in {"4", "5"}:
+        elif choice in {"4", "5", "6"}:
             repo = _repo()
             if choice == "4":
                 current = resolve_allowlist_name(settings, repo.get_setting(ALLOWLIST_BALANCER_NAME_KEY))
                 value = text_prompt("Название профиля", default=current)
                 setter = _do_set_allowlist_name
-            else:
+            elif choice == "5":
                 current = resolve_allowlist_flag(settings, repo.get_setting(ALLOWLIST_BALANCER_FLAG_KEY))
                 value = text_prompt("Код страны (RU/NL/DE; off — без флага)", default=current or "off")
                 setter = _do_set_allowlist_flag
+            else:
+                current = resolve_allowlist_description(settings, repo.get_setting(ALLOWLIST_BALANCER_DESCRIPTION_KEY))
+                value = text_prompt("Описание (auto — техническая подпись)", default=current)
+                setter = _do_set_allowlist_description
             try:
                 setter(value)
             except ValueError as exc:
@@ -289,6 +300,33 @@ def _do_set_allowlist_flag(value: str) -> None:
     _repo().set_setting(ALLOWLIST_BALANCER_FLAG_KEY, code)
     print_success(f"Флаг профиля БС: {code or 'без флага'}")
     print_info("Обновите подписку в Happ, чтобы увидеть изменение")
+
+
+def _do_set_allowlist_description(value: str) -> None:
+    description = normalize_profile_description(value)
+    _repo().set_setting(ALLOWLIST_BALANCER_DESCRIPTION_KEY, description)
+    print_success(f"Описание профиля БС: {escape(description)}")
+    print_info("Обновите подписку в Happ, чтобы увидеть изменение")
+
+
+@settings_app.command("allowlist-balancer-description")
+def settings_allowlist_description(
+    value: str = typer.Argument(..., help="Текст под именем профиля; auto — техническая подпись"),
+    unicode_escaped: bool = typer.Option(
+        False, "--unicode-escaped", help="Описание с JSON-escape \\uXXXX",
+    ),
+) -> None:
+    """Задать meta.serverDescription составного профиля Happ."""
+    try:
+        if unicode_escaped:
+            try:
+                value = json.loads(f'"{value}"')
+            except json.JSONDecodeError as exc:
+                raise ValueError("некорректное описание с JSON-escape: используйте \\uXXXX") from exc
+        _do_set_allowlist_description(value)
+    except ValueError as exc:
+        print_error(str(exc))
+        raise typer.Exit(1) from exc
 
 
 @settings_app.command("allowlist-balancer-name")

@@ -3,7 +3,9 @@ from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from app.features.allowlist_balancer import PROFILE_NAME, normalize_profile_flag, normalize_profile_name
+from app.features.allowlist_balancer import (
+    PROFILE_NAME, normalize_profile_flag, normalize_profile_name, normalize_profile_description,
+)
 
 
 class Settings(BaseSettings):
@@ -53,6 +55,9 @@ class Settings(BaseSettings):
     allowlist_balancer_flag: str = Field(
         default="", validation_alias="ALLOWLIST_BALANCER_FLAG",
     )
+    allowlist_balancer_description: str = Field(
+        default="auto", validation_alias="ALLOWLIST_BALANCER_DESCRIPTION",
+    )
     allowlist_probe_url: str = Field(
         default="https://www.gstatic.com/generate_204", validation_alias="ALLOWLIST_PROBE_URL",
     )
@@ -73,6 +78,11 @@ class Settings(BaseSettings):
     @classmethod
     def validate_balancer_flag(cls, value: str) -> str:
         return normalize_profile_flag(value)
+
+    @field_validator("allowlist_balancer_description")
+    @classmethod
+    def validate_balancer_description(cls, value: str) -> str:
+        return normalize_profile_description(value)
 
     @field_validator("allowlist_probe_url")
     @classmethod

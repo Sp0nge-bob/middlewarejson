@@ -33,6 +33,7 @@
 | `ALLOWLIST_BALANCER_ENABLED` | `true` | Независимая функция композиции пары `[A]`/`[B]` из remarks. Не новый TRANSFORM_MODE. Без однозначной пары композиция не применяется. |
 | `ALLOWLIST_BALANCER_NAME` | `Автовыбор — A → Б` | Имя итогового профиля в Happ. Не пустое, без управляющих символов и служебных меток `[A]`/`[B]`. |
 | `ALLOWLIST_BALANCER_FLAG` | *(пусто)* | Двухбуквенный код, например `RU`, `NL`, `DE`, `EU`, без учёта регистра. Превращается в эмодзи перед именем. Пустое значение или `off` — без флага. |
+| `ALLOWLIST_BALANCER_DESCRIPTION` | `auto` | `meta.serverDescription` под названием в Happ. `auto`/пусто — описание исходного A, иначе техническая подпись первого узла A. Любой другой текст — своё описание; без управляющих символов. Статическая подпись, не описание текущего выбранного узла. |
 | `ALLOWLIST_PROBE_URL` | `https://www.gstatic.com/generate_204` | Общий HTTPS endpoint для клиентских проб A/Б; без credentials и fragment. Должен быть доступен через все VPN-выходы. |
 | `ALLOWLIST_PROBE_INTERVAL_SEC` | `20` | Пауза между раундами ordinary observatory, 1–3600 секунд. Время обнаружения включает длительность проб; переключение ровно за этот интервал не гарантируется. |
 | `DB_PATH` | `data/middleware.db` | SQLite: режим трансформации и независимый переключатель БС-балансера |
@@ -49,10 +50,14 @@ python -m app.cli settings allowlist-balancer off
 python -m app.cli settings allowlist-balancer-name "Мой VPN"
 python -m app.cli settings allowlist-balancer-flag RU
 python -m app.cli settings allowlist-balancer-flag off
+python -m app.cli settings allowlist-balancer-description "VLESS / WS / TLS | JSON"
+python -m app.cli settings allowlist-balancer-description auto
 ```
 
 В интерактивном меню переключатель находится в «Настройки → БС-балансер».
 В том же меню есть отдельные пункты названия профиля и флага страны.
+Пункт 6 задаёт описание профиля. Команда описания поддерживает `--unicode-escaped`
+для точного ввода через JSON-escape `\uXXXX` в терминале с неверной кодировкой.
 Например, имя `Мой VPN` и код `RU` дают `🇷🇺 Мой VPN` в поле remarks.
 Имя и флаг из SQLite имеют приоритет над .env и применяются к следующим выдачам;
 для отображения изменения обновите подписку в Happ. При правке .env требуется
@@ -80,6 +85,7 @@ TRANSFORM_MODE=ios-fix
 ALLOWLIST_BALANCER_ENABLED=true
 ALLOWLIST_BALANCER_NAME="Мой VPN"
 ALLOWLIST_BALANCER_FLAG=RU
+ALLOWLIST_BALANCER_DESCRIPTION=auto
 ALLOWLIST_PROBE_URL=https://www.gstatic.com/generate_204
 ALLOWLIST_PROBE_INTERVAL_SEC=20
 DB_PATH=data/middleware.db

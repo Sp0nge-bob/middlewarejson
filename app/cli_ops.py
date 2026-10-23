@@ -37,6 +37,7 @@ from app.services.mode import TRANSFORM_MODE_KEY, resolve_transform_mode
 from app.services.feature_settings import (
     ALLOWLIST_BALANCER_KEY, ALLOWLIST_BALANCER_NAME_KEY, ALLOWLIST_BALANCER_FLAG_KEY,
     resolve_allowlist_balancer, resolve_allowlist_name, resolve_allowlist_flag,
+    ALLOWLIST_BALANCER_DESCRIPTION_KEY, resolve_allowlist_description,
 )
 from app.features.allowlist_balancer import format_profile_name
 from app.services.systemd_service import (
@@ -124,6 +125,9 @@ def print_dashboard() -> None:
     print_field("Профиль БС", escape(format_profile_name(
         resolve_allowlist_name(settings, repo.get_setting(ALLOWLIST_BALANCER_NAME_KEY)),
         resolve_allowlist_flag(settings, repo.get_setting(ALLOWLIST_BALANCER_FLAG_KEY)),
+    )))
+    print_field("Описание БС", escape(resolve_allowlist_description(
+        settings, repo.get_setting(ALLOWLIST_BALANCER_DESCRIPTION_KEY),
     )))
     print_field("Агент", f"http://{settings.agent_host}:{settings.agent_port}{agent_path}/<sub_id>")
     print_field("Upstream", f"{upstream_base}{upstream_path}/<sub_id>" if upstream_base else "—")

@@ -9,6 +9,7 @@ from app.services.mode import TRANSFORM_MODE_KEY, resolve_transform_mode
 from app.services.feature_settings import (
     ALLOWLIST_BALANCER_KEY, ALLOWLIST_BALANCER_NAME_KEY, ALLOWLIST_BALANCER_FLAG_KEY,
     resolve_allowlist_balancer, resolve_allowlist_name, resolve_allowlist_flag,
+    ALLOWLIST_BALANCER_DESCRIPTION_KEY, resolve_allowlist_description,
 )
 from app.services.transformer import PassthroughTransformer
 from app.transformers.ios_fix import apply_ios_fix, apply_ios_fix_dns
@@ -42,6 +43,9 @@ class TransformService:
                 ),
                 flag_code=resolve_allowlist_flag(
                     self._settings, self._repository.get_setting(ALLOWLIST_BALANCER_FLAG_KEY),
+                ),
+                description=resolve_allowlist_description(
+                    self._settings, self._repository.get_setting(ALLOWLIST_BALANCER_DESCRIPTION_KEY),
                 ),
             )
         if mode == "ios-fix":
