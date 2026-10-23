@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 from rich import box
 from rich.table import Table
+from rich.markup import escape
 
 from app.cli_ui import (
     CANCEL_HINT,
@@ -33,7 +34,11 @@ from app.models.subscription import (
     validate_sub_id,
 )
 from app.services.mode import TRANSFORM_MODE_KEY, resolve_transform_mode
-from app.services.feature_settings import ALLOWLIST_BALANCER_KEY, resolve_allowlist_balancer
+from app.services.feature_settings import (
+    ALLOWLIST_BALANCER_KEY, ALLOWLIST_BALANCER_NAME_KEY, ALLOWLIST_BALANCER_FLAG_KEY,
+    resolve_allowlist_balancer, resolve_allowlist_name, resolve_allowlist_flag,
+)
+from app.features.allowlist_balancer import format_profile_name
 from app.services.systemd_service import (
     get_service_scope,
     is_linux,
@@ -116,6 +121,10 @@ def print_dashboard() -> None:
     print_field("БС-балансер", "включён" if resolve_allowlist_balancer(
         settings, repo.get_setting(ALLOWLIST_BALANCER_KEY),
     ) else "выключен")
+    print_field("Профиль БС", escape(format_profile_name(
+        resolve_allowlist_name(settings, repo.get_setting(ALLOWLIST_BALANCER_NAME_KEY)),
+        resolve_allowlist_flag(settings, repo.get_setting(ALLOWLIST_BALANCER_FLAG_KEY)),
+    )))
     print_field("Агент", f"http://{settings.agent_host}:{settings.agent_port}{agent_path}/<sub_id>")
     print_field("Upstream", f"{upstream_base}{upstream_path}/<sub_id>" if upstream_base else "—")
     print_field("Служба", _service_label())

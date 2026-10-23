@@ -1,4 +1,5 @@
 import typer
+from rich.markup import escape
 
 from app.cli_ops import (
     preview_subscription,
@@ -31,7 +32,10 @@ from app.services.mode import (
 )
 from app.services.feature_settings import (
     ALLOWLIST_BALANCER_KEY, normalize_feature_switch, resolve_allowlist_balancer,
+    ALLOWLIST_BALANCER_NAME_KEY, ALLOWLIST_BALANCER_FLAG_KEY,
+    resolve_allowlist_name, resolve_allowlist_flag,
 )
+from app.features.allowlist_balancer import normalize_profile_name, normalize_profile_flag, format_profile_name
 
 app = typer.Typer(
     help="middlewarejson CLI — прослойка JSON-подписок 3x-ui для iOS/HAPP",
@@ -112,6 +116,10 @@ def _do_script_settings_show() -> None:
     print_field("БС-балансер", "включён" if resolve_allowlist_balancer(
         settings, repo.get_setting(ALLOWLIST_BALANCER_KEY),
     ) else "выключен")
+    print_field("Профиль БС", escape(format_profile_name(
+        resolve_allowlist_name(settings, repo.get_setting(ALLOWLIST_BALANCER_NAME_KEY)),
+        resolve_allowlist_flag(settings, repo.get_setting(ALLOWLIST_BALANCER_FLAG_KEY)),
+    )))
     if db_mode:
         print_field("Режим в базе", db_mode)
     else:
@@ -144,6 +152,8 @@ def _run_settings_menu() -> None:
         print_menu_item(1, "Агент и upstream")
         print_menu_item(2, "Режим трансформации")
         print_menu_item(3, "БС-балансер — включить / выключить")
+        print_menu_item(4, "БС-балансер — название профиля")
+        print_menu_item(5, "БС-балансер — флаг страны")
         print_menu_item(0, "Назад")
         choice = prompt_line("Выбор [0 — назад]")
         if choice == "0" or not choice:
@@ -156,6 +166,20 @@ def _run_settings_menu() -> None:
             repo = _repo()
             enabled = resolve_allowlist_balancer(settings, repo.get_setting(ALLOWLIST_BALANCER_KEY))
             _do_set_allowlist_balancer("off" if enabled else "on")
+        elif choice in {"4", "5"}:
+            repo = _repo()
+            if choice == "4":
+                current = resolve_allowlist_name(settings, repo.get_setting(ALLOWLIST_BALANCER_NAME_KEY))
+                value = text_prompt("Название профиля", default=current)
+                setter = _do_set_allowlist_name
+            else:
+                current = resolve_allowlist_flag(settings, repo.get_setting(ALLOWLIST_BALANCER_FLAG_KEY))
+                value = text_prompt("Код страны (RU/NL/DE; off — без флага)", default=current or "off")
+                setter = _do_set_allowlist_flag
+            try:
+                setter(value)
+            except ValueError as exc:
+                print_error(str(exc))
         else:
             print_warning("Неизвестный пункт")
 
@@ -246,6 +270,40 @@ def settings_allowlist_balancer(value: str = typer.Argument(..., help="on или
     """Включить или выключить отдельную функцию БС-балансера."""
     try:
         _do_set_allowlist_balancer(value)
+    except ValueError as exc:
+        print_error(str(exc))
+        raise typer.Exit(1) from exc
+
+
+def _do_set_allowlist_name(value: str) -> None:
+    name = normalize_profile_name(value)
+    _repo().set_setting(ALLOWLIST_BALANCER_NAME_KEY, name)
+    print_success(f"Название профиля БС: {escape(name)}")
+    print_info("Обновите подписку в Happ, чтобы увидеть новое имя")
+
+
+def _do_set_allowlist_flag(value: str) -> None:
+    code = normalize_profile_flag(value)
+    _repo().set_setting(ALLOWLIST_BALANCER_FLAG_KEY, code)
+    print_success(f"Флаг профиля БС: {code or 'без флага'}")
+    print_info("Обновите подписку в Happ, чтобы увидеть изменение")
+
+
+@settings_app.command("allowlist-balancer-name")
+def settings_allowlist_name(value: str = typer.Argument(..., help="Имя итогового профиля в Happ")) -> None:
+    """Задать отображаемое имя составного профиля."""
+    try:
+        _do_set_allowlist_name(value)
+    except ValueError as exc:
+        print_error(str(exc))
+        raise typer.Exit(1) from exc
+
+
+@settings_app.command("allowlist-balancer-flag")
+def settings_allowlist_flag(value: str = typer.Argument(..., help="Код RU/NL/DE; off — убрать флаг")) -> None:
+    """Задать флаг перед именем составного профиля."""
+    try:
+        _do_set_allowlist_flag(value)
     except ValueError as exc:
         print_error(str(exc))
         raise typer.Exit(1) from exc

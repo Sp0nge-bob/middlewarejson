@@ -56,6 +56,35 @@ def _roles(remarks: Any) -> set[str]:
     return {"A" if m.lower() in {"a", "а"} else "B" for m in _MARKER.findall(remarks)}
 
 
+def normalize_profile_name(value: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError("название должно быть строкой")
+    value = value.strip()
+    if not value or any(ord(c) < 32 or ord(c) == 127 for c in value):
+        raise ValueError("название не должно быть пустым или содержать управляющие символы")
+    if _roles(value):
+        raise ValueError("метки [A]/[B] предназначены для исходных пулов, а не итогового имени")
+    return value
+
+
+def normalize_profile_flag(value: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError("флаг задаётся двухбуквенным кодом страны")
+    value = value.strip()
+    if value.lower() in {"", "off", "none"}:
+        return ""
+    if not re.fullmatch(r"[A-Za-z]{2}", value):
+        raise ValueError("укажите код страны RU/NL/DE или off для удаления флага")
+    return value.upper()
+
+
+def format_profile_name(name: str, flag_code: str = "") -> str:
+    name = normalize_profile_name(name)
+    code = normalize_profile_flag(flag_code)
+    flag = "".join(chr(0x1F1E6 + ord(c) - ord("A")) for c in code)
+    return f"{flag} {name}" if flag else name
+
+
 def _tagged(items: Any) -> dict[str, dict[str, Any]]:
     if not isinstance(items, list):
         raise InvalidPool("missing tagged list")
@@ -266,7 +295,7 @@ def validate_allowlist_profile(config: dict[str, Any]) -> None:
         raise InvalidPool("observer must cover exactly A and B")
 
 
-def _build(a: _Pool, b: _Pool, probe_url: str, interval: str) -> dict[str, Any]:
+def _build(a: _Pool, b: _Pool, probe_url: str, interval: str, profile_name: str) -> dict[str, Any]:
     common_a = {k: v for k, v in a.config.items() if k not in _PROFILE_FIELDS}
     common_b = {k: v for k, v in b.config.items() if k not in _PROFILE_FIELDS}
     if common_a != common_b or a.routing_options != b.routing_options or a.rules != b.rules:
@@ -286,7 +315,7 @@ def _build(a: _Pool, b: _Pool, probe_url: str, interval: str) -> dict[str, Any]:
         if {ob["tag"] for ob in _selected(merged, selectors)} != {ob["tag"] for ob in pool.members}:
             raise InvalidPool("selector changes membership after composition")
     result = copy.deepcopy(a.config)
-    result["remarks"] = PROFILE_NAME
+    result["remarks"] = profile_name
     result["outbounds"] = [
         {"tag": UNAVAILABLE, "protocol": "blackhole", "settings": {}},
         *copy.deepcopy(merged),
@@ -323,6 +352,7 @@ def _build(a: _Pool, b: _Pool, probe_url: str, interval: str) -> dict[str, Any]:
 def compose_allowlist_balancer(
     payload: SubscriptionPayload, *, probe_url: str = DEFAULT_PROBE_URL,
     probe_interval: str = DEFAULT_PROBE_INTERVAL,
+    profile_name: str = PROFILE_NAME, flag_code: str = "",
 ) -> SubscriptionPayload:
     """Replace one valid marked pair; preserve unrelated profiles and input.
 
@@ -350,10 +380,11 @@ def compose_allowlist_balancer(
         logger.warning("allowlist balancer skipped: expected exactly one marked A and one B")
         return payload
     _validate_probe(probe_url, probe_interval)
+    label = format_profile_name(profile_name, flag_code)
     ia, ca = marked["A"][0]
     ib, cb = marked["B"][0]
     try:
-        composed = _build(_read_pool(ca), _read_pool(cb), probe_url, probe_interval)
+        composed = _build(_read_pool(ca), _read_pool(cb), probe_url, probe_interval, label)
     except InvalidPool as exc:
         logger.warning("allowlist balancer skipped: %s", exc)
         return payload

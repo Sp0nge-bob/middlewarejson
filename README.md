@@ -80,6 +80,8 @@ python -m app.cli settings transform-mode ios-fix
 python -m app.cli settings transform-mode ios-fix-dns
 python -m app.cli settings allowlist-balancer on
 python -m app.cli settings allowlist-balancer off
+python -m app.cli settings allowlist-balancer-name "Мой VPN"
+python -m app.cli settings allowlist-balancer-flag RU
 python -m app.cli service status
 python -m app.cli service install --start
 ```
@@ -97,6 +99,11 @@ python -m app.cli service install --start
 Для полностью неизменённого JSON выберите passthrough и выключите БС-балансер.
 
 Пара заменяется одним профилем «Автовыбор — A → Б»; остальные профили сохраняются.
+Название можно изменить через `ALLOWLIST_BALANCER_NAME` или CLI. Отдельный
+`ALLOWLIST_BALANCER_FLAG=RU` добавит `🇷🇺` перед названием; код `off` убирает
+добавляемый флаг. В интерактивных настройках есть пункты имени и флага.
+После изменения обновите подписку в Happ. Метки `[A]`/`[B]` остаются только
+в названиях исходных балансеров панели.
 leastPing выбирает минимальную измеренную задержку внутри активного пула.
 Даже медленный живой A имеет приоритет перед Б. На запуске непроверенные A
 остаются кандидатами; переключение происходит после результатов клиентских проб,

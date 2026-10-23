@@ -3,9 +3,12 @@
 import logging
 
 from app.config import Settings
+from app.features.allowlist_balancer import normalize_profile_name, normalize_profile_flag
 
 logger = logging.getLogger(__name__)
 ALLOWLIST_BALANCER_KEY = "allowlist_balancer_enabled"
+ALLOWLIST_BALANCER_NAME_KEY = "allowlist_balancer_name"
+ALLOWLIST_BALANCER_FLAG_KEY = "allowlist_balancer_flag"
 
 
 def normalize_feature_switch(value: str) -> bool:
@@ -25,3 +28,23 @@ def resolve_allowlist_balancer(settings: Settings, repository_value: str | None)
     except ValueError:
         logger.warning("invalid allowlist balancer switch; feature disabled")
         return False
+
+
+def resolve_allowlist_name(settings: Settings, repository_value: str | None) -> str:
+    if repository_value is None:
+        return settings.allowlist_balancer_name
+    try:
+        return normalize_profile_name(repository_value)
+    except ValueError:
+        logger.warning("invalid allowlist profile name; using configured default")
+        return settings.allowlist_balancer_name
+
+
+def resolve_allowlist_flag(settings: Settings, repository_value: str | None) -> str:
+    if repository_value is None:
+        return settings.allowlist_balancer_flag
+    try:
+        return normalize_profile_flag(repository_value)
+    except ValueError:
+        logger.warning("invalid allowlist profile flag; using configured default")
+        return settings.allowlist_balancer_flag

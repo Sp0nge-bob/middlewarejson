@@ -16,9 +16,12 @@ from app.features.allowlist_balancer import (
     DEFAULT_PROBE_URL, ENTER_B, ENTER_GUARD, GUARD_A, InvalidPool, POOL_A,
     POOL_B, PROFILE_NAME, TO_B, UNAVAILABLE, compose_allowlist_balancer,
     validate_allowlist_profile,
+    format_profile_name, normalize_profile_name, normalize_profile_flag,
 )
 from app.services.feature_settings import (
     ALLOWLIST_BALANCER_KEY, normalize_feature_switch, resolve_allowlist_balancer,
+    ALLOWLIST_BALANCER_NAME_KEY, ALLOWLIST_BALANCER_FLAG_KEY,
+    resolve_allowlist_name, resolve_allowlist_flag,
 )
 from app.services.mode import TRANSFORM_MODE_KEY, VALID_TRANSFORM_MODES
 from app.services.transform_service import TransformService
@@ -372,3 +375,104 @@ def test_base64_with_marker_text_is_never_composed(tmp_path, monkeypatch):
     assert result.status_code == 200
     assert result.text == text
     transform.assert_not_called()
+
+
+@pytest.mark.parametrize("code,expected", [
+    ("RU", "🇷🇺 Мой VPN"), (" nl ", "🇳🇱 Мой VPN"), ("de", "🇩🇪 Мой VPN"),
+    ("EU", "🇪🇺 Мой VPN"), ("", "Мой VPN"), ("off", "Мой VPN"),
+])
+def test_profile_name_and_flag_are_display_settings(pools, code, expected):
+    result = compose_allowlist_balancer(pools, profile_name=" Мой VPN ", flag_code=code)
+    assert result[0]["remarks"] == expected
+    baseline = compose_allowlist_balancer(pools)[0]
+    assert result[0]["routing"] == baseline["routing"]
+    assert result[0]["outbounds"] == baseline["outbounds"]
+    assert apply_ios_fix(result)[0]["remarks"] == expected
+    assert apply_ios_fix_dns(result)[0]["remarks"] == expected
+    assert compose_allowlist_balancer(result) == result
+    assert pools[0]["remarks"].startswith("[A]")
+
+
+@pytest.mark.parametrize("name", ["", " ", "bad\nname", "bad\x00name", "[A] VPN", "VPN [в]"])
+def test_invalid_profile_names_are_rejected(name):
+    with pytest.raises(ValueError):
+        normalize_profile_name(name)
+    with pytest.raises(ValidationError):
+        Settings(allowlist_balancer_name=name)
+
+
+@pytest.mark.parametrize("code", ["R", "RUS", "12", "РФ", "ß", "🇷🇺", "R\nU"])
+def test_invalid_flag_codes_are_rejected(code):
+    with pytest.raises(ValueError):
+        normalize_profile_flag(code)
+    with pytest.raises(ValidationError):
+        Settings(allowlist_balancer_flag=code)
+
+
+def test_name_and_flag_from_env(monkeypatch):
+    monkeypatch.setenv("ALLOWLIST_BALANCER_NAME", "Мой VPN")
+    monkeypatch.setenv("ALLOWLIST_BALANCER_FLAG", "ru")
+    settings = Settings(_env_file=None)
+    assert settings.allowlist_balancer_name == "Мой VPN"
+    assert settings.allowlist_balancer_flag == "RU"
+
+
+@pytest.mark.parametrize("mode", ["ios-fix", "ios-fix-dns", "passthrough"])
+def test_profile_label_database_override_is_dynamic(pools, tmp_path, mode):
+    settings = Settings(db_path=str(tmp_path / "label.db"), transform_mode=mode,
+                        allowlist_balancer_name="Из env", allowlist_balancer_flag="NL")
+    service = TransformService(settings)
+    repo = SettingsRepository(Database(settings.db_path))
+    assert service.transform("sub", pools)[0]["remarks"] == "🇳🇱 Из env"
+    repo.set_setting(ALLOWLIST_BALANCER_NAME_KEY, "Новое имя")
+    repo.set_setting(ALLOWLIST_BALANCER_FLAG_KEY, "RU")
+    assert service.transform("sub", pools)[0]["remarks"] == "🇷🇺 Новое имя"
+    repo.set_setting(ALLOWLIST_BALANCER_FLAG_KEY, "")
+    assert service.transform("sub", pools)[0]["remarks"] == "Новое имя"
+    assert repo.get_setting(TRANSFORM_MODE_KEY) is None
+    assert repo.get_setting(ALLOWLIST_BALANCER_KEY) is None
+
+
+def test_invalid_database_label_uses_valid_env_defaults():
+    settings = Settings(allowlist_balancer_name="Default", allowlist_balancer_flag="DE")
+    assert resolve_allowlist_name(settings, None) == "Default"
+    assert resolve_allowlist_name(settings, "[B] wrong") == "Default"
+    assert resolve_allowlist_flag(settings, None) == "DE"
+    assert resolve_allowlist_flag(settings, "wrong") == "DE"
+    assert resolve_allowlist_flag(settings, "") == ""
+    assert format_profile_name("Name", "off") == "Name"
+
+
+def test_cli_name_and_flag_settings_are_independent(tmp_path, monkeypatch):
+    import app.cli as cli
+    repo = SettingsRepository(Database(tmp_path / "label-cli.db"))
+    monkeypatch.setattr(cli, "_repo", lambda: repo)
+    repo.set_setting(ALLOWLIST_BALANCER_KEY, "false")
+    repo.set_setting(TRANSFORM_MODE_KEY, "ios-fix-dns")
+    runner = CliRunner()
+    assert runner.invoke(cli.app, ["settings", "allowlist-balancer-name", "Мой VPN"]).exit_code == 0
+    assert runner.invoke(cli.app, ["settings", "allowlist-balancer-flag", "ru"]).exit_code == 0
+    assert repo.get_setting(ALLOWLIST_BALANCER_NAME_KEY) == "Мой VPN"
+    assert repo.get_setting(ALLOWLIST_BALANCER_FLAG_KEY) == "RU"
+    assert runner.invoke(cli.app, ["settings", "allowlist-balancer-flag", "off"]).exit_code == 0
+    assert repo.get_setting(ALLOWLIST_BALANCER_FLAG_KEY) == ""
+    assert runner.invoke(cli.app, ["settings", "allowlist-balancer-flag", "RUS"]).exit_code == 1
+    assert runner.invoke(cli.app, ["settings", "allowlist-balancer-name", "[A] Wrong"]).exit_code == 1
+    assert repo.get_setting(ALLOWLIST_BALANCER_NAME_KEY) == "Мой VPN"
+    assert repo.get_setting(TRANSFORM_MODE_KEY) == "ios-fix-dns"
+    assert repo.get_setting(ALLOWLIST_BALANCER_KEY) == "false"
+
+
+@pytest.mark.parametrize("choice,value,key,expected", [
+    ("4", "Мой VPN", ALLOWLIST_BALANCER_NAME_KEY, "Мой VPN"),
+    ("5", "ru", ALLOWLIST_BALANCER_FLAG_KEY, "RU"),
+])
+def test_interactive_name_and_flag_settings(tmp_path, monkeypatch, choice, value, key, expected):
+    import app.cli as cli
+    repo = SettingsRepository(Database(tmp_path / "menu.db"))
+    monkeypatch.setattr(cli, "_repo", lambda: repo)
+    choices = iter([choice, "0"])
+    monkeypatch.setattr(cli, "prompt_line", lambda *args: next(choices))
+    monkeypatch.setattr(cli, "text_prompt", lambda *args, **kwargs: value)
+    cli._run_settings_menu()
+    assert repo.get_setting(key) == expected
