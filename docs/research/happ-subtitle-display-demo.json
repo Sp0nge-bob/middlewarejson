@@ -1,0 +1,39 @@
+[
+  {
+    "remarks": "ТЕСТ ПОДПИСИ 1 — blackhole",
+    "log": {"loglevel": "warning"},
+    "inbounds": [{
+      "tag": "socks", "listen": "127.0.0.1", "port": 10808,
+      "protocol": "socks", "settings": {"auth": "noauth", "udp": true}
+    }],
+    "outbounds": [{"tag": "cf-unavailable", "protocol": "blackhole", "settings": {}}],
+    "routing": {"rules": [{"type": "field", "network": "tcp,udp", "outboundTag": "cf-unavailable"}]}
+  },
+  {
+    "remarks": "ТЕСТ ПОДПИСИ 2 — VLESS WS TLS",
+    "log": {"loglevel": "warning"},
+    "inbounds": [{
+      "tag": "socks", "listen": "127.0.0.1", "port": 10808,
+      "protocol": "socks", "settings": {"auth": "noauth", "udp": true}
+    }],
+    "outbounds": [
+      {
+        "tag": "cf-description",
+        "protocol": "vless",
+        "settings": {"vnext": [{
+          "address": "127.0.0.1", "port": 9,
+          "users": [{"id": "00000000-0000-4000-8000-000000000001", "encryption": "none"}]
+        }]},
+        "streamSettings": {
+          "network": "ws", "security": "tls",
+          "tlsSettings": {"serverName": "localhost"},
+          "wsSettings": {"path": "/"},
+          "sockopt": {"domainStrategy": "AsIs", "dialerProxy": "cf-unavailable"}
+        },
+        "mux": {"enabled": false}
+      },
+      {"tag": "cf-unavailable", "protocol": "blackhole", "settings": {}}
+    ],
+    "routing": {"rules": [{"type": "field", "network": "tcp,udp", "outboundTag": "cf-unavailable"}]}
+  }
+]

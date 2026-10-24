@@ -1,0 +1,255 @@
+{
+  "date": "2026-10-24",
+  "core": "Xray 26.9.9 52a412d go1.27.1 windows/amd64",
+  "apk_inspected": "Happ 4.7.1 versionCode 1703",
+  "user_apk_not_inspected": "Happ 4.7.1 (1999)",
+  "mobile_ui_verified": false,
+  "scope": "Local loopback probes; SOCKS pools for routing; VLESS WS TLS for blocked transport",
+  "routing_and_parser": [
+    {
+      "name": "blackhole-first-no-route",
+      "parse": true,
+      "response": null,
+      "attempt_delta": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "blackhole-first-route-error",
+      "parse": true,
+      "response": null,
+      "attempt_delta": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "real-a-first-no-route",
+      "parse": true,
+      "response": "A1",
+      "attempt_delta": [
+        1,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "real-a-first-route-error",
+      "parse": true,
+      "response": "A1",
+      "attempt_delta": [
+        1,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "blocked-copy-first-no-route",
+      "parse": true,
+      "response": null,
+      "attempt_delta": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "blocked-copy-first-route-error",
+      "parse": true,
+      "response": null,
+      "attempt_delta": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "real-a-first-priority-and-dns",
+      "parse": true,
+      "phases": [
+        {
+          "phase": "A-alive",
+          "user": "A1",
+          "dns_tcp": "A1",
+          "dns_udp": "A1"
+        },
+        {
+          "phase": "only-slow-A",
+          "user": "A3"
+        },
+        {
+          "phase": "B",
+          "user": "B1",
+          "dns_tcp": "B1",
+          "dns_udp": "B1"
+        },
+        {
+          "phase": "A-recovered",
+          "user": "A2",
+          "dns_tcp": "A2",
+          "dns_udp": "A2"
+        },
+        {
+          "phase": "all-dead",
+          "user": null,
+          "dns_tcp": null,
+          "dns_udp": "timeout",
+          "attempt_delta": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "blocked-copy-first-priority-and-dns",
+      "parse": true,
+      "phases": [
+        {
+          "phase": "A-alive",
+          "user": "A1",
+          "dns_tcp": "A1",
+          "dns_udp": "A1"
+        },
+        {
+          "phase": "only-slow-A",
+          "user": "A3"
+        },
+        {
+          "phase": "B",
+          "user": "B1",
+          "dns_tcp": "B1",
+          "dns_udp": "B1"
+        },
+        {
+          "phase": "A-recovered",
+          "user": "A2",
+          "dns_tcp": "A2",
+          "dns_udp": "A2"
+        },
+        {
+          "phase": "all-dead",
+          "user": null,
+          "dns_tcp": null,
+          "dns_udp": "timeout",
+          "attempt_delta": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "real-a-first-passthrough-real-transports",
+      "parse": true
+    },
+    {
+      "name": "blocked-copy-first-passthrough-real-transports",
+      "parse": true
+    },
+    {
+      "name": "real-a-first-ios-fix-real-transports",
+      "parse": true
+    },
+    {
+      "name": "blocked-copy-first-ios-fix-real-transports",
+      "parse": true
+    },
+    {
+      "name": "real-a-first-ios-fix-dns-real-transports",
+      "parse": true
+    },
+    {
+      "name": "blocked-copy-first-ios-fix-dns-real-transports",
+      "parse": true
+    }
+  ],
+  "vless_ws_tls": [
+    {
+      "mode": "passthrough",
+      "chain": "block",
+      "parse": true,
+      "response": null,
+      "endpoint_connections": 0
+    },
+    {
+      "mode": "passthrough",
+      "chain": "missing",
+      "parse": true,
+      "response": null,
+      "endpoint_connections": 0
+    },
+    {
+      "mode": "passthrough",
+      "chain": "control-unblocked",
+      "parse": true,
+      "response": null,
+      "endpoint_connections": 5
+    },
+    {
+      "mode": "ios-fix",
+      "chain": "block",
+      "parse": true,
+      "response": null,
+      "endpoint_connections": 0
+    },
+    {
+      "mode": "ios-fix",
+      "chain": "missing",
+      "parse": true,
+      "response": null,
+      "endpoint_connections": 0
+    },
+    {
+      "mode": "ios-fix",
+      "chain": "control-unblocked",
+      "parse": true,
+      "response": null,
+      "endpoint_connections": 5
+    },
+    {
+      "mode": "ios-fix-dns",
+      "chain": "block",
+      "parse": true,
+      "response": null,
+      "endpoint_connections": 0
+    },
+    {
+      "mode": "ios-fix-dns",
+      "chain": "missing",
+      "parse": true,
+      "response": null,
+      "endpoint_connections": 0
+    },
+    {
+      "mode": "ios-fix-dns",
+      "chain": "control-unblocked",
+      "parse": true,
+      "response": null,
+      "endpoint_connections": 5
+    }
+  ],
+  "legacy_proxy_settings_accepted": false,
+  "demo_parser_checks": 2
+}

@@ -132,6 +132,9 @@ JSON-escape позволяет передать точное Unicode-имя ASCI
 **Уточнение 2026-10-24:** пользователь не наблюдает подпись на Android
 4.7.1(1999), ProviderID не настроен. Отправка поля не гарантирует отображение.
 Задача отложена; [результаты исследования и методы решения](HAPP_BALANCER_DESCRIPTION_ISSUE.md).
+Позднее пользователь возобновил исследование: выполнены 24 локальных сценария
+для JSON-кандидатов и upstream Xray 26.9.9. Результаты и ограничения вынесены
+в [отдельный отчёт](HAPP_JSON_SUBTITLE_RESEARCH.md). Production-код не изменён.
 
 Добавлена независимая настройка ALLOWLIST_BALANCER_DESCRIPTION и ключ SQLite
 allowlist_balancer_description. CLI: `settings allowlist-balancer-description`,
