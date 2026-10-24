@@ -39,7 +39,7 @@ from app.services.feature_settings import (
     resolve_allowlist_balancer, resolve_allowlist_name, resolve_allowlist_flag,
     ALLOWLIST_BALANCER_DESCRIPTION_KEY, resolve_allowlist_description,
 )
-from app.features.allowlist_balancer import format_profile_name
+from app.features.allowlist_balancer import DESCRIPTION, format_profile_name, is_allowlist_profile
 from app.services.systemd_service import (
     get_service_scope,
     is_linux,
@@ -149,6 +149,8 @@ def _proxy_outbounds(config: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         protocol = str(outbound.get("protocol", ""))
         tag = str(outbound.get("tag", ""))
+        if tag == DESCRIPTION and is_allowlist_profile(config):
+            continue
         if tag == "proxy" or protocol not in _SYSTEM_PROTOCOLS:
             result.append(outbound)
     return result

@@ -145,9 +145,46 @@ allowlist_balancer_description. CLI: `settings allowlist-balancer-description`,
 Поддерживается явный флаг --unicode-escaped. Изменения через SQLite применяются
 к следующим ответам подписки; .env требует перезапуска службы.
 
-Первый blackhole и граф A → Б сохранены. Различие serverDescription между
+На этом этапе первый blackhole и граф A → Б сохранялись. Различие serverDescription между
 исходными A/B допустимо; остальные поля meta должны совпадать и сохраняются.
 Подпись статична и не отражает выбранный наблюдателем узел. Трансформации
 IOS-FIX / IOS-FIX-DNS сохраняют meta как часть исходного документа.
 Используется документированное Happ поле:
 https://github.com/HappDev/happ_su/blob/main/dev-docs/examples-of-links-and-parameters.md#5-visualization-and-metadata
+
+### Реализация технической подписи без ProviderID
+
+Перед изменениями опубликованы checkpoint-коммит **64c0391** и тег
+**rollback-before-happ-subtitle-2026-10-24**; см. [откат](ROLLBACK_HAPP_SUBTITLE.md).
+
+Первый outbound теперь фиксированный `cf-description`, VLESS/WS/TLS с loopback
+127.0.0.1:9, AsIs, отключённым mux и единственной цепочкой dialerProxy → cf-unavailable.
+Реальные адреса, UUID, TLS/transport-настройки A/B в него не копируются. Настоящий
+cf-unavailable / blackhole сохранён, fallback B продолжает указывать прямо в него.
+Статическая техническая подпись не отражает транспорт выбранного реального узла.
+Кастомное meta.serverDescription остаётся независимым механизмом и сохраняет
+ограничения возможностей Happ/ProviderID.
+
+Валидатор требует полного совпадения служебного outbound с фиксированным шаблоном,
+запрещает его захват pool selectors, observatory и рабочими routing rules, а также
+произвольные цепочки у остальных выходов. Старый граф без cf-description с первым
+blackhole продолжает проходить валидацию и оба iOS-нормализатора. CLI не учитывает
+служебный VLESS как дополнительный реальный сервер. Повторная трансформация
+сохраняет граф и служебный выход; source pool chains по-прежнему не разрешаются.
+
+Полный локальный набор: **223 passed**, 1 прежний StarletteDeprecationWarning,
+включая официальный upstream Xray 26.9.9 (52a412d, Windows amd64).
+
+- 3 проверки парсера с реальными структурами VLESS/WS/gRPC/XHTTP;
+- 3 полных runtime-сценария (passthrough, IOS-FIX, IOS-FIX-DNS): cold start,
+  быстрый A, медленный последний A, отказ всех A, отказ B1, восстановление A,
+  DNS TCP/UDP, полный отказ и direct/block;
+- 6 runtime-сценариев ошибок (3 режима × нет маршрута/ошибка балансера): TCP,
+  TCP port 53 и UDP port 53 блокируются; журнал подтверждает перенаправление
+  VLESS-dial на настоящий cf-unavailable;
+- проверки повреждений служебного выхода, его selectors/observer/rules,
+  порядка default, запрета дополнительных цепочек, старого графа и CLI-счётчика.
+
+Это не подтверждение UI Android 4.7.1(1999), iPhone Happ 6.0.0 или мобильного
+LibXray. На устройствах остаются импорт/обновление подписки, подпись, ping,
+Tunnel/Bootstrap DNS, sleep/resume, Wi-Fi/LTE и реальные транспорты под нагрузкой.

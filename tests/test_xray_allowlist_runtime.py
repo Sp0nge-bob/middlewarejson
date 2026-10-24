@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from app.features.allowlist_balancer import compose_allowlist_balancer
+from app.features.allowlist_balancer import DESCRIPTION, compose_allowlist_balancer
 from app.transformers.ios_fix import apply_ios_fix, apply_ios_fix_dns
 
 FIXTURE = Path(__file__).parent / "fixtures" / "priority_pools_3xui.json"
@@ -247,7 +247,7 @@ class _DirectHandler(socketserver.BaseRequestHandler):
             pass
 
 
-@pytest.mark.parametrize("fix", [apply_ios_fix, apply_ios_fix_dns], ids=["ios-fix", "ios-fix-dns"])
+@pytest.mark.parametrize("fix", [lambda x: x, apply_ios_fix, apply_ios_fix_dns], ids=["passthrough", "ios-fix", "ios-fix-dns"])
 def test_real_core_priority_latency_recovery_and_dns(xray_binary, tmp_path, fix):
     gate = threading.Event()
     nodes = [_Node(name, delay, gate) for name, delay in [
@@ -347,3 +347,56 @@ def test_real_core_priority_latency_recovery_and_dns(xray_binary, tmp_path, fix)
         direct.shutdown()
         direct.server_close()
         direct_thread.join(timeout=2)
+
+
+@pytest.mark.parametrize("fix", [lambda x: x, apply_ios_fix, apply_ios_fix_dns], ids=["passthrough", "ios-fix", "ios-fix-dns"])
+@pytest.mark.parametrize("fault", ["no-route", "balancer-error"])
+def test_description_default_blocks_tcp_udp_and_dns(xray_binary, tmp_path, fix, fault):
+    config = fix(compose_allowlist_balancer(json.loads(FIXTURE.read_text(encoding="utf-8")))[0])
+    assert config["outbounds"][0]["tag"] == DESCRIPTION
+    # Inject routing failures after normal validation to exercise the core's
+    # default handler, not a supported way of configuring the middleware graph.
+    config.pop("observatory")
+    config.pop("dns", None)
+    config["routing"] = {"rules": []}
+    if fault == "balancer-error":
+        config["routing"] = {
+            "rules": [{"type": "field", "network": "tcp,udp", "balancerTag": "empty"}],
+            "balancers": [{"tag": "empty", "selector": ["no-matching-outbound"], "strategy": {"type": "roundRobin"}}],
+        }
+    # Even accidental use of a real member can only hit loopback in this test.
+    for outbound in config["outbounds"]:
+        for server in outbound.get("settings", {}).get("vnext", []):
+            server["address"], server["port"] = "127.0.0.1", 9
+    inbound = _port()
+    config["inbounds"] = [config["inbounds"][0]]
+    config["inbounds"][0]["port"] = inbound
+    config["log"] = {"loglevel": "info"}
+    path = tmp_path / "fault.json"
+    path.write_text(json.dumps(config), encoding="utf-8")
+    log_path = tmp_path / "fault.log"
+    with log_path.open("w", encoding="utf-8") as log:
+        process = subprocess.Popen(
+            [str(xray_binary), "run", "-c", str(path)], stdout=log, stderr=subprocess.STDOUT,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        try:
+            deadline = time.monotonic() + 5
+            while True:
+                assert process.poll() is None, log_path.read_text(encoding="utf-8")
+                try:
+                    with socket.create_connection(("127.0.0.1", inbound), timeout=.2):
+                        break
+                except OSError:
+                    assert time.monotonic() < deadline
+                    time.sleep(.02)
+            assert _request(inbound) is None
+            assert _request(inbound, port=53) is None
+            with pytest.raises(socket.timeout):
+                _dns_udp(inbound)
+        finally:
+            process.terminate()
+            process.wait(timeout=10)
+    logs = log_path.read_text(encoding="utf-8")
+    assert "cf-description" in logs
+    assert "redirecting request tcp:127.0.0.1:9 to cf-unavailable" in logs

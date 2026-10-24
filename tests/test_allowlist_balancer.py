@@ -14,7 +14,7 @@ from app.db.database import Database
 from app.db.repository import SettingsRepository
 from app.features.allowlist_balancer import (
     DEFAULT_PROBE_URL, ENTER_B, ENTER_GUARD, GUARD_A, InvalidPool, POOL_A,
-    POOL_B, PROFILE_NAME, TO_B, UNAVAILABLE, compose_allowlist_balancer,
+    POOL_B, PROFILE_NAME, TO_B, UNAVAILABLE, DESCRIPTION, compose_allowlist_balancer,
     validate_allowlist_profile,
     format_profile_name, normalize_profile_name, normalize_profile_flag,
 )
@@ -42,7 +42,7 @@ def test_composes_panel_pair_preserving_all_connection_fields(pools):
     config = result[0]
     assert config["remarks"] == PROFILE_NAME
     validate_allowlist_profile(config)
-    real = [o for o in config["outbounds"] if o["protocol"] == "vless"]
+    real = [o for o in config["outbounds"] if o["protocol"] == "vless" and o["tag"] != DESCRIPTION]
     expected = [o for p in pools for o in p["outbounds"] if o["protocol"] == "vless"]
     assert real == expected
     assert len(real) == 5
@@ -50,7 +50,8 @@ def test_composes_panel_pair_preserving_all_connection_fields(pools):
         assert config[key] == pools[0][key]
     assert config["routing"]["rules"][3:5] == pools[0]["routing"]["rules"][:2]
     assert config["routing"]["rules"][-1]["balancerTag"] == POOL_A
-    assert config["outbounds"][0]["tag"] == UNAVAILABLE
+    assert config["outbounds"][0]["tag"] == DESCRIPTION
+    assert config["outbounds"][1]["tag"] == UNAVAILABLE
     assert config["observatory"] == {
         "subjectSelector": ["bal-12-", "bal-13-"], "probeUrl": DEFAULT_PROBE_URL,
         "probeInterval": "20s", "enableConcurrency": True,
@@ -168,6 +169,7 @@ def test_ios_modes_preserve_graph_dns_and_idempotency(pools, fix):
     validate_allowlist_profile(fixed)
     assert fixed["routing"] == config["routing"]
     assert fixed["observatory"] == config["observatory"]
+    assert fixed["outbounds"][0] == config["outbounds"][0]
     assert fixed["inbounds"][0]["protocol"] == "socks"
     assert fixed["inbounds"][0]["tag"] == "socks"
     assert "fakedns" not in fixed["inbounds"][0]["sniffing"]["destOverride"]
@@ -195,6 +197,74 @@ def test_damaged_composed_graph_is_rejected(pools, kind):
     for fn in (validate_allowlist_profile, apply_ios_fix, apply_ios_fix_dns, compose_allowlist_balancer):
         with pytest.raises(InvalidPool):
             fn(config)
+
+
+def test_description_is_static_and_not_a_real_node(pools):
+    from app.cli_ops import summarize_profiles
+    config = compose_allowlist_balancer(pools)[0]
+    display = config["outbounds"][0]
+    assert display["protocol"] == "vless"
+    assert display["settings"]["vnext"][0]["address"] == "127.0.0.1"
+    assert display["settings"]["vnext"][0]["port"] == 9
+    assert display["streamSettings"]["network"] == "ws"
+    assert display["streamSettings"]["security"] == "tls"
+    assert display["streamSettings"]["sockopt"] == {"domainStrategy": "AsIs", "dialerProxy": UNAVAILABLE}
+    assert display["mux"] == {"enabled": False}
+    assert summarize_profiles(config)[0]["proxies"] == 5
+    # A change to a real endpoint must not be copied into the display outbound.
+    pools[0]["outbounds"][0]["settings"]["vnext"][0]["address"] = "changed.example"
+    assert compose_allowlist_balancer(pools)[0]["outbounds"][0] == display
+
+
+@pytest.mark.parametrize("kind", [
+    "address", "port", "dns", "dialer", "missing-dialer", "mux", "tls", "ws",
+    "extra-field", "rule", "pool", "observer", "default-order", "other-chain",
+])
+def test_description_cannot_weaken_graph(pools, kind):
+    config = compose_allowlist_balancer(pools)[0]
+    display = config["outbounds"][0]
+    if kind == "address":
+        display["settings"]["vnext"][0]["address"] = "external.example"
+    elif kind == "port":
+        display["settings"]["vnext"][0]["port"] = 443
+    elif kind == "dns":
+        display["streamSettings"]["sockopt"]["domainStrategy"] = "UseIP"
+    elif kind == "dialer":
+        display["streamSettings"]["sockopt"]["dialerProxy"] = "direct"
+    elif kind == "missing-dialer":
+        display["streamSettings"]["sockopt"].pop("dialerProxy")
+    elif kind == "mux":
+        display["mux"]["enabled"] = True
+    elif kind == "tls":
+        display["streamSettings"]["tlsSettings"]["allowInsecure"] = True
+    elif kind == "ws":
+        display["streamSettings"]["wsSettings"]["path"] = "/different"
+    elif kind == "extra-field":
+        display["proxySettings"] = {"tag": "direct"}
+    elif kind == "rule":
+        config["routing"]["rules"].append({"type": "field", "network": "tcp,udp", "outboundTag": DESCRIPTION})
+    elif kind == "pool":
+        for balancer in config["routing"]["balancers"][:2]:
+            balancer["selector"].append(DESCRIPTION)
+    elif kind == "observer":
+        config["observatory"]["subjectSelector"].append(DESCRIPTION)
+    elif kind == "default-order":
+        config["outbounds"][0], config["outbounds"][1] = config["outbounds"][1], config["outbounds"][0]
+    elif kind == "other-chain":
+        config["outbounds"][2]["streamSettings"]["sockopt"] = {"dialerProxy": "direct"}
+    for fn in (validate_allowlist_profile, apply_ios_fix, apply_ios_fix_dns, compose_allowlist_balancer):
+        with pytest.raises(InvalidPool):
+            fn(config)
+
+
+@pytest.mark.parametrize("fix", [apply_ios_fix, apply_ios_fix_dns])
+def test_legacy_blackhole_first_profile_is_still_supported(pools, fix):
+    config = compose_allowlist_balancer(pools)[0]
+    config["outbounds"].pop(0)
+    validate_allowlist_profile(config)
+    fixed = fix(config)
+    assert fixed["outbounds"][0]["tag"] == UNAVAILABLE
+    assert compose_allowlist_balancer(fixed) == fixed
 
 
 def test_existing_dns_rules_do_not_duplicate_or_prevent_required_route(pools):

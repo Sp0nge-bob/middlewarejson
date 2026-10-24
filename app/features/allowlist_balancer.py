@@ -23,6 +23,7 @@ TO_B = "cf-to-pool-b"
 ENTER_GUARD = "cf-enter-a-check"
 ENTER_B = "cf-enter-pool-b"
 UNAVAILABLE = "cf-unavailable"
+DESCRIPTION = "cf-description"
 PROFILE_NAME = "Автовыбор — A → Б"
 DEFAULT_PROBE_URL = "https://www.gstatic.com/generate_204"
 DEFAULT_PROBE_INTERVAL = "20s"
@@ -39,6 +40,29 @@ _PROFILE_FIELDS = {"remarks", "outbounds", "routing", "observatory", "burstObser
 
 class InvalidPool(ValueError):
     """A pair cannot be composed without changing its other semantics."""
+
+
+def _description_outbound() -> dict[str, Any]:
+    """Static Happ subtitle; every dial is blocked, never a working pool member.
+
+    Keep this complete shape strict: no source credentials, external address,
+    inherited transport options or arbitrary outbound chains belong here.
+    """
+    return {
+        "tag": DESCRIPTION,
+        "protocol": "vless",
+        "settings": {"vnext": [{
+            "address": "127.0.0.1", "port": 9,
+            "users": [{"id": "00000000-0000-4000-8000-000000000001", "encryption": "none"}],
+        }]},
+        "streamSettings": {
+            "network": "ws", "security": "tls",
+            "tlsSettings": {"serverName": "localhost"},
+            "wsSettings": {"path": "/"},
+            "sockopt": {"domainStrategy": "AsIs", "dialerProxy": UNAVAILABLE},
+        },
+        "mux": {"enabled": False},
+    }
 
 
 @dataclass
@@ -286,19 +310,27 @@ def validate_allowlist_profile(config: dict[str, Any]) -> None:
     tags_b = {ob["tag"] for ob in _selected(list(outbounds.values()), selectors_b)}
     if tags_a & tags_b:
         raise InvalidPool("priority selectors overlap")
+    if DESCRIPTION in tags_a | tags_b:
+        raise InvalidPool("description outbound selected as a real pool member")
     members_a = _selected(list(outbounds.values()), selectors_a)
     members_b = _selected(list(outbounds.values()), selectors_b)
     if {_identity(ob) for ob in members_a} & {_identity(ob) for ob in members_b}:
         raise InvalidPool("duplicate connection across composed pools")
     for tag, outbound in outbounds.items():
-        if tag not in tags_a | tags_b | {TO_GUARD, TO_B, UNAVAILABLE} and outbound.get("protocol") not in _SYSTEM_PROTOCOLS:
+        if tag != DESCRIPTION and _has_chain(outbound):
+            raise InvalidPool("unsupported chain outside description outbound")
+        if tag not in tags_a | tags_b | {TO_GUARD, TO_B, UNAVAILABLE, DESCRIPTION} and outbound.get("protocol") not in _SYSTEM_PROTOCOLS:
             raise InvalidPool("extra proxy outside composed pools")
     for tag, inbound in ((TO_GUARD, ENTER_GUARD), (TO_B, ENTER_B)):
         if outbounds.get(tag) != {"tag": tag, "protocol": "loopback", "settings": {"inboundTag": inbound}}:
             raise InvalidPool("invalid loopback link")
     if outbounds.get(UNAVAILABLE) != {"tag": UNAVAILABLE, "protocol": "blackhole", "settings": {}}:
         raise InvalidPool("missing terminal blackhole")
-    if config["outbounds"][0]["tag"] != UNAVAILABLE:
+    default_tag = config["outbounds"][0]["tag"]
+    if DESCRIPTION in outbounds:
+        if default_tag != DESCRIPTION or outbounds[DESCRIPTION] != _description_outbound():
+            raise InvalidPool("invalid blocked description outbound")
+    elif default_tag != UNAVAILABLE:
         raise InvalidPool("unsafe default outbound")
     routing = config["routing"]
     if routing.get("script"):
@@ -315,6 +347,8 @@ def validate_allowlist_profile(config: dict[str, Any]) -> None:
             raise InvalidPool("missing composed rule balancer")
         if "outboundTag" in rule and rule["outboundTag"] not in outbounds:
             raise InvalidPool("missing composed rule outbound")
+        if rule.get("outboundTag") == DESCRIPTION:
+            raise InvalidPool("routing rule targets description outbound")
     if "observatory" in routing or "burstObservatory" in routing or "burstObservatory" in config:
         raise InvalidPool("multiple or nested observers in composed graph")
     observer = config.get("observatory")
@@ -356,6 +390,7 @@ def _build(a: _Pool, b: _Pool, probe_url: str, interval: str, profile_name: str,
         "serverDescription": _automatic_description(a) if description == "auto" else description,
     }
     result["outbounds"] = [
+        _description_outbound(),
         {"tag": UNAVAILABLE, "protocol": "blackhole", "settings": {}},
         *copy.deepcopy(merged),
         {"tag": TO_GUARD, "protocol": "loopback", "settings": {"inboundTag": ENTER_GUARD}},
