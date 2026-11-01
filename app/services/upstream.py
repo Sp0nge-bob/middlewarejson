@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import httpx
 
 from app.config import Settings
+from app.safe_logging import configure_safe_transport_logging, subscription_log_id
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,7 @@ def _headers_for_upstream(request_headers: dict[str, str] | None) -> dict[str, s
 
 class UpstreamClient:
     def __init__(self, settings: Settings, *, base_url: str | None = None) -> None:
+        configure_safe_transport_logging()
         self._settings = settings
         self._base_url = (base_url or settings.upstream_base_url).rstrip("/")
 
@@ -100,14 +102,12 @@ class UpstreamClient:
             ) as client:
                 response = await client.get(url, headers=headers)
         except httpx.TimeoutException as exc:
-            logger.warning("upstream timeout for sub_id=%s url=%s: %s", sub_id, url, exc)
+            logger.warning("upstream timeout subscription=%s", subscription_log_id(sub_id))
             raise UpstreamError("upstream timeout") from exc
         except httpx.RequestError as exc:
             logger.warning(
-                "upstream request error for sub_id=%s url=%s: %s",
-                sub_id,
-                url,
-                exc,
+                "upstream request error subscription=%s",
+                subscription_log_id(sub_id),
             )
             raise UpstreamError("upstream unavailable") from exc
 

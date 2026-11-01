@@ -393,9 +393,8 @@ def test_http_subscription_composes_pair_and_preserves_metadata(pools, tmp_path,
         "Content-Type": "text/plain", "Subscription-Userinfo": "upload=1; download=2",
         "ProviderID": "test-provider", "DNS-From-JSON-Enable": "true", "X-Hwid-Active": "true",
     })
-    upstream = AsyncMock()
-    upstream.get.return_value = response
-    upstream.__aenter__.return_value = upstream
+    from upstream_fixture import mock_upstream
+    upstream = mock_upstream(response)
     with patch("app.services.upstream.httpx.AsyncClient", return_value=upstream):
         result = TestClient(app).request(method, "/json/abcd1234efgh5678", headers={"X-HWID": "dummy"})
     assert result.status_code == 200
@@ -403,7 +402,7 @@ def test_http_subscription_composes_pair_and_preserves_metadata(pools, tmp_path,
     assert result.headers["dns-from-json-enable"] == "true"
     assert result.headers["x-hwid-active"] == "true"
     assert result.headers["cache-control"] == "no-store"
-    assert upstream.get.call_args.kwargs["headers"]["x-hwid"] == "dummy"
+    assert upstream.requests_seen[0].headers["x-hwid"] == "dummy"
     if method == "GET":
         assert len(result.json()) == 1
         validate_allowlist_profile(result.json()[0])
@@ -417,11 +416,10 @@ def test_hwid_denial_headers_survive_without_transform(tmp_path, monkeypatch):
     service = TransformService(settings)
     monkeypatch.setattr(app.state, "settings", settings)
     monkeypatch.setattr(app.state, "transform_service", service)
-    upstream = AsyncMock()
-    upstream.get.return_value = httpx.Response(404, headers={
+    from upstream_fixture import mock_upstream
+    upstream = mock_upstream(httpx.Response(404, headers={
         "X-Hwid-Active": "true", "X-Hwid-Max-Devices-Reached": "true",
-    })
-    upstream.__aenter__.return_value = upstream
+    }))
     with patch("app.services.upstream.httpx.AsyncClient", return_value=upstream), patch.object(service, "transform") as transform:
         result = TestClient(app).get("/json/abcd1234efgh5678")
     assert result.status_code == 404
@@ -436,10 +434,9 @@ def test_base64_with_marker_text_is_never_composed(tmp_path, monkeypatch):
     service = TransformService(settings)
     monkeypatch.setattr(app.state, "settings", settings)
     monkeypatch.setattr(app.state, "transform_service", service)
-    upstream = AsyncMock()
     text = "vless://dummy@example.com:443#[A]\nvless://dummy@example.org:443#[B]"
-    upstream.get.return_value = httpx.Response(200, text=text)
-    upstream.__aenter__.return_value = upstream
+    from upstream_fixture import mock_upstream
+    upstream = mock_upstream(httpx.Response(200, text=text))
     with patch("app.services.upstream.httpx.AsyncClient", return_value=upstream), patch.object(service, "transform") as transform:
         result = TestClient(app).get("/json/abcd1234efgh5678")
     assert result.status_code == 200

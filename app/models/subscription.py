@@ -63,6 +63,6 @@ def try_load_json_subscription(body: str) -> SubscriptionPayload | None:
         raise ValueError("empty subscription payload")
     if stripped[0] not in "{[":
         return None
-    payload: SubscriptionPayload = json.loads(body)
+    payload: SubscriptionPayload = json.loads(stripped)
     validate_payload(payload)
     return payload

@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
+from upstream_fixture import mock_upstream
 
 import httpx
 import pytest
@@ -39,11 +40,7 @@ def test_invalid_sub_id(client: TestClient) -> None:
 
 
 def test_upstream_404(client: TestClient) -> None:
-    mock_get = AsyncMock(return_value=_mock_upstream_response(status_code=404))
-    mock_client = AsyncMock()
-    mock_client.get = mock_get
-    mock_client.__aenter__.return_value = mock_client
-    mock_client.__aexit__.return_value = None
+    mock_client = mock_upstream(_mock_upstream_response(status_code=404))
 
     with patch("app.services.upstream.httpx.AsyncClient", return_value=mock_client):
         response = client.get(f"{JSON_SUB_PATH}/abcd1234efgh5678")
@@ -53,11 +50,7 @@ def test_upstream_404(client: TestClient) -> None:
 
 
 def test_head_broken_json_is_502_not_200(client: TestClient) -> None:
-    mock_get = AsyncMock(return_value=_mock_upstream_response(status_code=200, text="{not-json"))
-    mock_client = AsyncMock()
-    mock_client.get = mock_get
-    mock_client.__aenter__.return_value = mock_client
-    mock_client.__aexit__.return_value = None
+    mock_client = mock_upstream(_mock_upstream_response(status_code=200, text='{not-json'))
 
     with patch("app.services.upstream.httpx.AsyncClient", return_value=mock_client):
         response = client.head(f"{JSON_SUB_PATH}/abcd1234efgh5678")
@@ -67,20 +60,7 @@ def test_head_broken_json_is_502_not_200(client: TestClient) -> None:
 
 def test_base64_subscription_is_passed_through(client: TestClient) -> None:
     raw = "dmxlc3M6Ly8xMjM0NTY3OC1hYmNkLTEyMzQtYWJjZC0xMjM0NTY3ODlhYmNAZXhhbXBsZS5jb206NDQz"
-    mock_get = AsyncMock(
-        return_value=_mock_upstream_response(
-            status_code=200,
-            text=raw,
-            headers={
-                "Content-Type": "text/plain; charset=utf-8",
-                "Subscription-Userinfo": "upload=0; download=0; total=0; expire=0",
-            },
-        )
-    )
-    mock_client = AsyncMock()
-    mock_client.get = mock_get
-    mock_client.__aenter__.return_value = mock_client
-    mock_client.__aexit__.return_value = None
+    mock_client = mock_upstream(_mock_upstream_response(status_code=200, text=raw, headers={'Content-Type': 'text/plain; charset=utf-8', 'Subscription-Userinfo': 'upload=0; download=0; total=0; expire=0'}))
 
     with patch("app.services.upstream.httpx.AsyncClient", return_value=mock_client):
         response = client.get(f"{JSON_SUB_PATH}/abcd1234efgh5678")
@@ -94,17 +74,7 @@ def test_base64_subscription_is_passed_through(client: TestClient) -> None:
 
 
 def test_head_base64_subscription_is_200(client: TestClient) -> None:
-    mock_get = AsyncMock(
-        return_value=_mock_upstream_response(
-            status_code=200,
-            text="dmxlc3M6Ly9leGFtcGxl",
-            headers={"Content-Type": "text/plain; charset=utf-8"},
-        )
-    )
-    mock_client = AsyncMock()
-    mock_client.get = mock_get
-    mock_client.__aenter__.return_value = mock_client
-    mock_client.__aexit__.return_value = None
+    mock_client = mock_upstream(_mock_upstream_response(status_code=200, text='dmxlc3M6Ly9leGFtcGxl', headers={'Content-Type': 'text/plain; charset=utf-8'}))
 
     with patch("app.services.upstream.httpx.AsyncClient", return_value=mock_client):
         response = client.head(f"{JSON_SUB_PATH}/abcd1234efgh5678")
@@ -114,20 +84,7 @@ def test_head_base64_subscription_is_200(client: TestClient) -> None:
 
 
 def test_passthrough_json_and_headers(client: TestClient) -> None:
-    mock_get = AsyncMock(
-        return_value=_mock_upstream_response(
-            status_code=200,
-            text=SAMPLE_BODY,
-            headers={
-                "Subscription-Userinfo": "upload=0; download=0; total=0; expire=0",
-                "Profile-Update-Interval": "10",
-            },
-        )
-    )
-    mock_client = AsyncMock()
-    mock_client.get = mock_get
-    mock_client.__aenter__.return_value = mock_client
-    mock_client.__aexit__.return_value = None
+    mock_client = mock_upstream(_mock_upstream_response(status_code=200, text=SAMPLE_BODY, headers={'Subscription-Userinfo': 'upload=0; download=0; total=0; expire=0', 'Profile-Update-Interval': '10'}))
 
     with patch("app.services.upstream.httpx.AsyncClient", return_value=mock_client):
         response = client.get(f"{JSON_SUB_PATH}/abcd1234efgh5678")

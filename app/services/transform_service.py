@@ -13,6 +13,7 @@ from app.services.feature_settings import (
 )
 from app.services.transformer import PassthroughTransformer
 from app.transformers.ios_fix import apply_ios_fix, apply_ios_fix_dns
+from app.safe_logging import subscription_log_id
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +50,10 @@ class TransformService:
                 ),
             )
         if mode == "ios-fix":
-            logger.info("ios-fix for sub_id=%s", sub_id)
+            logger.info("ios-fix subscription=%s", subscription_log_id(sub_id))
             return apply_ios_fix(raw)
         if mode == "ios-fix-dns":
-            logger.info("ios-fix-dns for sub_id=%s", sub_id)
+            logger.info("ios-fix-dns subscription=%s", subscription_log_id(sub_id))
             return apply_ios_fix_dns(raw)
-        logger.info("passthrough for sub_id=%s", sub_id)
+        logger.info("passthrough subscription=%s", subscription_log_id(sub_id))
         return raw

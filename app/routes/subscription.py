@@ -10,6 +10,7 @@ from app.models.subscription import (
     validate_sub_id,
 )
 from app.services.upstream import UpstreamClient, UpstreamError
+from app.safe_logging import subscription_log_id
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +62,10 @@ def build_subscription_router(json_path: str) -> APIRouter:
         try:
             payload = try_load_json_subscription(result.body)
         except (json.JSONDecodeError, ValueError, TypeError) as exc:
-            snippet = result.body.strip().replace("\n", " ")[:180]
             logger.warning(
-                "invalid upstream json for sub_id=%s: %s; body=%s",
-                sub_id,
-                exc,
-                snippet or "(empty)",
+                "invalid upstream json subscription=%s error_type=%s",
+                subscription_log_id(sub_id),
+                type(exc).__name__,
             )
             return PlainTextResponse(status_code=502, content="invalid upstream json")
 
@@ -88,7 +87,7 @@ def build_subscription_router(json_path: str) -> APIRouter:
             transformed = request.app.state.transform_service.transform(sub_id, payload)
             body = _serialize_payload(transformed)
         except Exception as exc:
-            logger.exception("transform failed for sub_id=%s: %s", sub_id, exc)
+            logger.error("transform failed subscription=%s error_type=%s", subscription_log_id(sub_id), type(exc).__name__)
             return PlainTextResponse(status_code=500, content="transform failed")
 
         headers = {

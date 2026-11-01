@@ -10,11 +10,13 @@ from app.routes.subscription import build_subscription_router
 from app.services.factory import build_transform_service
 from app.services.mode import TRANSFORM_MODE_KEY, resolve_transform_mode
 from app.services.feature_settings import ALLOWLIST_BALANCER_KEY, resolve_allowlist_balancer
+from app.safe_logging import configure_safe_transport_logging
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
+configure_safe_transport_logging()
 
 logger = logging.getLogger(__name__)
 
@@ -23,12 +25,11 @@ def _log_transform_readiness() -> None:
     repo = SettingsRepository(Database(settings.db_path))
     mode = resolve_transform_mode(settings, repo.get_setting(TRANSFORM_MODE_KEY))
     upstream_base = settings.resolved_upstream_base_url()
-    upstream_path = settings.upstream_json_path.rstrip("/")
     logger.info("TRANSFORM_MODE=%s", mode)
     logger.info("ALLOWLIST_BALANCER_ENABLED=%s", resolve_allowlist_balancer(
         settings, repo.get_setting(ALLOWLIST_BALANCER_KEY),
     ))
-    logger.info("upstream target: %s%s/<sub_id>", upstream_base, upstream_path)
+    logger.info("upstream configured: %s", bool(upstream_base))
     if not upstream_base:
         logger.warning("UPSTREAM_BASE_URL пуст — задайте URL sub-сервера 3x-ui в .env")
 
