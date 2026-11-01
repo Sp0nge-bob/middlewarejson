@@ -30,7 +30,14 @@ class Settings(BaseSettings):
     )
     request_timeout_sec: float = Field(
         default=15.0,
+        gt=0,
+        allow_inf_nan=False,
         validation_alias="REQUEST_TIMEOUT_SEC",
+    )
+    max_upstream_body_bytes: int = Field(
+        default=2 * 1024 * 1024,
+        gt=0,
+        validation_alias="MAX_UPSTREAM_BODY_BYTES",
     )
     upstream_verify_ssl: bool = Field(
         default=True,

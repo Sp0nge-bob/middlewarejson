@@ -1,4 +1,6 @@
 import logging
+import asyncio
+import zlib
 from dataclasses import dataclass
 
 import httpx
@@ -48,6 +50,67 @@ class UpstreamError(Exception):
     pass
 
 
+async def _read_bounded_body(response: httpx.Response, limit: int) -> bytes:
+    """Bound both wire bytes and decompressor output before retaining data.
+
+    A transport may allocate a raw chunk before we see it. This is a per-response
+    budget, not a process-wide memory guarantee or a bound on HTTPX internals.
+    """
+    encoding = response.headers.get("content-encoding", "identity").strip().lower()
+    if encoding not in ("", "identity", "gzip", "deflate"):
+        raise UpstreamError("unsupported upstream content encoding")
+    wire_limit = limit + 65536  # compressed framing allowance, also bounds empty/padded streams
+    body = bytearray()
+    wire_bytes = 0
+    decoder = (zlib.decompressobj(16 + zlib.MAX_WBITS) if encoding == "gzip"
+               else zlib.decompressobj() if encoding == "deflate" else None)
+    deflate_prefix = bytearray()
+    can_retry_raw_deflate = encoding == "deflate"
+
+    def retain(chunk: bytes) -> None:
+        if len(body) + len(chunk) > limit:
+            raise UpstreamError("upstream response exceeded body limit")
+        body.extend(chunk)
+
+    async for raw in response.aiter_raw():
+        wire_bytes += len(raw)
+        if wire_bytes > wire_limit:
+            raise UpstreamError("upstream response exceeded wire limit")
+        if encoding in ("", "identity"):
+            retain(raw)
+            continue
+        if can_retry_raw_deflate:
+            # Preserve only the bounded initial probe until wrapped decoding
+            # yields output. A raw stream can accidentally start with 78 01.
+            deflate_prefix.extend(raw)
+        while raw:
+            if decoder.eof:
+                if encoding != "gzip":
+                    raise UpstreamError("invalid trailing upstream compressed data")
+                raw = raw.lstrip(b"\x00")  # conventional gzip zero padding between/after members
+                if not raw:
+                    break
+                decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
+            try:
+                decoded = decoder.decompress(raw, min(65536, limit - len(body) + 1))
+            except zlib.error:
+                if not can_retry_raw_deflate:
+                    raise
+                decoder = zlib.decompressobj(-zlib.MAX_WBITS)
+                raw = bytes(deflate_prefix)
+                can_retry_raw_deflate = False
+                deflate_prefix.clear()
+                continue
+            retain(decoded)
+            if decoded or decoder.eof:
+                can_retry_raw_deflate = False
+                deflate_prefix.clear()
+            raw = decoder.unused_data if decoder.eof else decoder.unconsumed_tail
+    if wire_bytes and encoding in ("gzip", "deflate") and not decoder.eof:
+        raise UpstreamError("incomplete upstream compressed response")
+    return bytes(body)
+
+
 def _headers_for_upstream(request_headers: dict[str, str] | None) -> dict[str, str]:
     """3x-ui JSON path can switch format by User-Agent; keep Happ/curl, drop httpx."""
     headers: dict[str, str] = {"Accept": "application/json"}
@@ -94,31 +157,33 @@ class UpstreamClient:
         headers = _headers_for_upstream(request_headers)
         if self._settings.upstream_host_header:
             headers["Host"] = self._settings.upstream_host_header
+        headers["Accept-Encoding"] = "gzip, deflate, identity"
 
         try:
-            async with httpx.AsyncClient(
-                timeout=self._settings.request_timeout_sec,
-                verify=self._settings.upstream_verify_ssl,
-            ) as client:
-                response = await client.get(url, headers=headers)
-        except httpx.TimeoutException as exc:
+            # A slow endless stream must not evade phase timeouts by sending one
+            # chunk per interval. The same configured timeout also bounds total I/O.
+            async with asyncio.timeout(self._settings.request_timeout_sec):
+                async with httpx.AsyncClient(
+                    timeout=self._settings.request_timeout_sec,
+                    verify=self._settings.upstream_verify_ssl,
+                ) as client:
+                    async with client.stream("GET", url, headers=headers) as response:
+                        raw_body = await _read_bounded_body(response, self._settings.max_upstream_body_bytes)
+                        # Use HTTPX's text decoder to retain charset handling and
+                        # its UTF-8 replacement fallback for unknown encodings.
+                        text_response = httpx.Response(response.status_code, content=raw_body,
+                            headers={"content-type": response.headers.get("content-type", "")})
+                        result = UpstreamResult(response.status_code, text_response.text, {
+                            key: value for key, value in response.headers.items()
+                            if key.lower() in PASSTHROUGH_RESPONSE_HEADERS
+                        })
+            return result
+        except (httpx.TimeoutException, TimeoutError) as exc:
             logger.warning("upstream timeout subscription=%s", subscription_log_id(sub_id))
             raise UpstreamError("upstream timeout") from exc
-        except httpx.RequestError as exc:
+        except (httpx.RequestError, zlib.error) as exc:
             logger.warning(
                 "upstream request error subscription=%s",
                 subscription_log_id(sub_id),
             )
             raise UpstreamError("upstream unavailable") from exc
-
-        passthrough_headers = {
-            key: value
-            for key, value in response.headers.items()
-            if key.lower() in PASSTHROUGH_RESPONSE_HEADERS
-        }
-
-        return UpstreamResult(
-            status_code=response.status_code,
-            body=response.text,
-            headers=passthrough_headers,
-        )
