@@ -7,11 +7,12 @@
 
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-/opt/middlewarejson}"
+DEPLOY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="${APP_DIR:-$(cd "$DEPLOY_DIR/.." && pwd)}"
 
 if [[ ! -d "$APP_DIR" ]]; then
   echo "APP_DIR not found: $APP_DIR" >&2
-  echo "Set APP_DIR to your project path, e.g. export APP_DIR=/opt/middlewarejson" >&2
+  echo "Set APP_DIR to your project path, e.g. export APP_DIR=/root/middlewarejson" >&2
   exit 1
 fi
 
