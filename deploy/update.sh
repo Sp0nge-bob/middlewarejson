@@ -25,6 +25,11 @@ commit_title="$(git log -1 --format='%s' origin/main 2>/dev/null | head -n 1 | t
 
 if [[ -n "$local_sha" && -n "$remote_sha" && "$local_sha" == "$remote_sha" ]]; then
   echo "Код уже актуален: ${remote_short}${commit_title:+ — $commit_title}"
+  if [[ -f "$APP_DIR/deploy/lib/cli_command.sh" ]]; then
+    # shellcheck source=lib/cli_command.sh
+    source "$APP_DIR/deploy/lib/cli_command.sh"
+    ensure_middlewarejson_command 2>/dev/null || true
+  fi
   echo "Обновление и перезапуск службы не требуются"
   exit 0
 fi
@@ -36,6 +41,13 @@ if [[ -d .venv ]]; then
   # shellcheck disable=SC1091
   source .venv/bin/activate
   pip install -r requirements.txt -q
+fi
+
+# Актуализируем системный ярлык команды /usr/local/bin/middlewarejson
+if [[ -f "$APP_DIR/deploy/lib/cli_command.sh" ]]; then
+  # shellcheck source=lib/cli_command.sh
+  source "$APP_DIR/deploy/lib/cli_command.sh"
+  ensure_middlewarejson_command 2>/dev/null || true
 fi
 
 if systemctl is-active --quiet middlewarejson 2>/dev/null; then

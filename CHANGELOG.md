@@ -2,6 +2,14 @@
 
 All notable changes to the `middlewarejson` project will be documented in this file.
 
+## [1.2.1] - 2026-11-01
+
+### Added
+- **Системный ярлык терминала (`middlewarejson` и `mwjson`)**: Добавлен модуль `deploy/lib/cli_command.sh` и управляющий скрипт `deploy/middlewarejson-ctl.sh`. Создаёт системный ярлык `/usr/local/bin/middlewarejson` (и симлинк `/usr/local/bin/mwjson`) для глобального вызова интерактивного CLI прослойки из любой папки терминала (аналогично `vpnplategabot` и `vpnwebsite`).
+- **Авто-актуализация ярлыка**: Скрипт `deploy/update.sh` и метод `install_service()` автоматически проверяют и актуализируют путь к проекту в `/usr/local/bin/middlewarejson`.
+
+---
+
 ## [1.2.0] - 2026-11-01
 
 ### Security Hardening & Resource Protection Release

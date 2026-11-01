@@ -148,3 +148,22 @@ def test_stop_service_failure(monkeypatch) -> None:
     ok, message = svc.stop_service(scope)
     assert ok is False
     assert message == "Unit not running"
+
+def test_render_cli_shim_content_uses_project_root(tmp_path: Path) -> None:
+    content = svc.render_cli_shim_content(project_root=tmp_path)
+    assert f'APP_DIR="{tmp_path.resolve()}"' in content
+    assert 'CTL="$APP_DIR/deploy/middlewarejson-ctl.sh"' in content
+    assert 'exec bash "$CTL" "$@"' in content
+
+
+def test_install_cli_shim_on_linux(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(svc, "is_linux", lambda: True)
+    bin_path = tmp_path / "bin" / "middlewarejson"
+    ok, message = svc.install_cli_shim(project_root=tmp_path, bin_path=bin_path)
+    assert ok is True
+    assert "Команда установлена" in message
+    assert bin_path.is_file()
+    symlink_file = tmp_path / "bin" / "mwjson"
+    if symlink_file.exists():
+        assert symlink_file.is_symlink()
+

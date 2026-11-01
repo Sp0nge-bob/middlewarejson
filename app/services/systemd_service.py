@@ -258,6 +258,12 @@ def install_service(
         if not started:
             return False, message
 
+    # Устанавливаем системный ярлык команды CLI, если доступны права
+    try:
+        install_cli_shim(root)
+    except Exception:
+        pass
+
     if scope.kind == "user":
         linger_hint = (
             f"Для работы без входа в систему: loginctl enable-linger {getpass.getuser()}"
@@ -265,3 +271,42 @@ def install_service(
         return True, f"Служба установлена (user). {linger_hint}"
 
     return True, "Служба установлена (system)"
+
+
+def render_cli_shim_content(project_root: Path | None = None) -> str:
+    root = (project_root or detect_project_root()).resolve()
+    return f'''#!/usr/bin/env bash
+# CaelixFlow MiddlewareJSON — системный ярлык на CLI
+set -euo pipefail
+APP_DIR="{root}"
+CTL="$APP_DIR/deploy/middlewarejson-ctl.sh"
+if [[ ! -f "$CTL" ]]; then
+    echo "ERR: не найден $CTL — middlewarejson перемещён или удалён" >&2
+    exit 1
+fi
+exec bash "$CTL" "$@"
+'''
+
+
+def install_cli_shim(
+    project_root: Path | None = None,
+    bin_path: Path = Path("/usr/local/bin/middlewarejson"),
+) -> tuple[bool, str]:
+    """Создаёт системный ярлык для вызова CLI из любой директории."""
+    if not is_linux():
+        return False, "Доступно только на Linux"
+    try:
+        bin_path.parent.mkdir(parents=True, exist_ok=True)
+        content = render_cli_shim_content(project_root)
+        bin_path.write_text(content, encoding="utf-8")
+        bin_path.chmod(0o755)
+        try:
+            mwjson_symlink = bin_path.parent / "mwjson"
+            if mwjson_symlink.is_symlink() or mwjson_symlink.exists():
+                mwjson_symlink.unlink()
+            mwjson_symlink.symlink_to(bin_path.name)
+        except OSError:
+            pass
+        return True, f"Команда установлена: {bin_path} (и mwjson)"
+    except Exception as e:
+        return False, f"Не удалось создать {bin_path}: {e}"
