@@ -76,12 +76,38 @@ def profile(rules=None, outbounds=None):
             "routing": {"rules": rules or []}}
 
 
+@pytest.mark.parametrize("extra", [{"domain": ["example.invalid"]}, {"ip": ["192.0.2.0/24"]},
+    {"inboundTag": ["local"]}, {"source": ["192.0.2.1"]}, {"sourceIP": ["192.0.2.1"]},
+    {"sourcePort": 1234}, {"protocol": ["dns"]}, {"user": ["synthetic"]}, {"attrs": "attrs['x']"},
+    {"network": "tcp"}, {"network": "udp"}])
+def test_mid004_specific_dns_does_not_suppress_general_rule(extra):
+    exception = {"type": "field", "port": 53, "outboundTag": "direct", **extra}
+    fallback = {"type": "field", "network": "tcp,udp", "outboundTag": "direct"}
+    original = profile([exception, fallback])
+    saved = copy.deepcopy(original)
+    fixed = apply_ios_fix_dns(original)
+    assert original == saved
+    assert fixed["routing"]["rules"] == [exception, {"type": "field", "port": 53,
+        "network": "tcp,udp", "outboundTag": "proxy"}, fallback]
+    assert apply_ios_fix_dns(fixed) == fixed
 
 
+def test_mid004_general_direct_fallback_does_not_hide_new_rule():
+    fallback = {"type": "field", "network": "tcp,udp", "outboundTag": "direct"}
+    rules = apply_ios_fix_dns(profile([fallback]))["routing"]["rules"]
+    assert rules[0].get("port") == 53
+    assert rules[1] == fallback
 
 
+def test_mid004_no_proxy_does_not_invent_target():
+    original = profile(outbounds=[{"protocol": "freedom", "tag": "direct"}])
+    assert apply_ios_fix_dns(original) == apply_ios_fix(original)
 
 
+def test_mid004_direct_alias_is_not_proxy_target():
+    original = profile([{"type": "field", "domain": ["example.invalid"], "outboundTag": "vpn-sounding"}],
+        [{"tag": "vpn-sounding", "protocol": "freedom"}, {"tag": "real-proxy", "protocol": "trojan"}])
+    assert apply_ios_fix_dns(original)["routing"]["rules"][-1]["outboundTag"] == "real-proxy"
 
 
 @pytest.mark.parametrize("encoding,encode", [("gzip", gzip.compress), ("deflate", zlib.compress),
@@ -158,6 +184,11 @@ def test_mid002_empty_body_with_encoding_header_preserves_httpx_behavior(encodin
     assert fetch(Chunks([]), {"content-encoding": encoding}, status=status).body == ""
 
 
+def test_mid004_webhook_metadata_does_not_make_broad_fallback_specific():
+    fallback = {"type": "field", "network": "tcp,udp", "outboundTag": "direct", "webhook": "https://audit.invalid"}
+    rules = apply_ios_fix_dns(profile([fallback]))["routing"]["rules"]
+    assert rules[0]["port"] == 53
+    assert rules[1] == fallback
 
 
 def test_mid002_exact_cap_and_untrusted_large_content_length():
@@ -227,3 +258,71 @@ def test_mid002_default_two_mib_boundary_is_inclusive():
     assert len(fetch(Chunks([b"a" * cap]), cap=cap).body) == cap
     with pytest.raises(UpstreamError):
         fetch(Chunks([b"a" * cap, b"x"]), cap=cap)
+
+
+@pytest.mark.parametrize("protocol", ["vless", "vmess", "trojan", "shadowsocks", "socks", "http",
+    "hysteria", "hysteria2", "wireguard", "tuic", "shadowsocks2022"])
+def test_mid004_supported_proxy_protocol_can_be_target(protocol):
+    result = apply_ios_fix_dns(profile(outbounds=[{"tag": "actual", "protocol": protocol}]))
+    assert result["routing"]["rules"][0]["outboundTag"] == "actual"
+
+
+@pytest.mark.parametrize("protocol", ["freedom", "dns", "blackhole", "loopback", "unknown", ""])
+def test_mid004_system_and_unknown_protocol_never_invent_proxy(protocol):
+    original = profile(outbounds=[{"tag": "proxy", "protocol": protocol}])
+    assert apply_ios_fix_dns(original) == apply_ios_fix(original)
+
+
+@pytest.mark.parametrize("tag", ["proxy", "direct"])
+@pytest.mark.parametrize("network", [None, "tcp,udp", "udp,tcp"])
+def test_mid004_existing_reachable_full_dns_policy_preserved(tag, network):
+    rule = {"type": "field", "port": "53", "outboundTag": tag}
+    if network:
+        rule["network"] = network
+    original = profile([rule])
+    assert apply_ios_fix_dns(original)["routing"]["rules"] == [rule]
+
+
+def test_mid004_existing_unreachable_dns_does_not_prevent_insertion():
+    fallback = {"type": "field", "network": "tcp,udp", "outboundTag": "direct"}
+    dns = {"type": "field", "port": 53, "outboundTag": "direct"}
+    rules = apply_ios_fix_dns(profile([fallback, dns]))["routing"]["rules"]
+    assert rules[0]["port"] == 53
+    assert rules[0]["outboundTag"] == "proxy"
+    assert rules[1:] == [fallback, dns]
+
+
+def test_mid004_balancer_members_and_fallback_must_be_real_proxy_targets():
+    original = profile()
+    original["routing"]["balancers"] = [{"tag": "bad", "selector": ["direct"]},
+        {"tag": "good", "selector": ["proxy"]}]
+    result = apply_ios_fix_dns(original)
+    assert result["routing"]["rules"][0]["balancerTag"] == "good"
+
+
+def test_mid004_dangling_rule_tag_is_not_selected():
+    original = profile([{"port": 53, "domain": ["example.invalid"], "outboundTag": "absent"}])
+    rules = apply_ios_fix_dns(original)["routing"]["rules"]
+    assert rules[0]["outboundTag"] == "absent"  # Existing exception not rewritten.
+    assert rules[1]["outboundTag"] == "proxy"
+
+
+def test_mid004_specific_non_dns_exclusions_precede_general_dns():
+    exceptions = [{"type": "field", "ip": ["geoip:private"], "outboundTag": "direct"},
+        {"type": "field", "domain": ["geosite:private"], "outboundTag": "direct"},
+        {"type": "field", "port": "443", "outboundTag": "direct"}]
+    fallback = {"type": "field", "network": "tcp,udp", "outboundTag": "direct"}
+    fixed = apply_ios_fix_dns(profile(exceptions + [fallback]))
+    assert fixed["routing"]["rules"][:3] == exceptions
+    assert fixed["routing"]["rules"][3]["port"] == 53
+    assert fixed["routing"]["rules"][4] == fallback
+
+
+def test_mid004_allowlist_graph_unchanged():
+    import json
+    from pathlib import Path
+    from app.features.allowlist_balancer import compose_allowlist_balancer
+    payload = json.loads((Path(__file__).parent / "fixtures" / "priority_pools_3xui.json").read_text(encoding="utf-8"))
+    composed = compose_allowlist_balancer(payload)
+    assert apply_ios_fix_dns(composed) == apply_ios_fix(composed)
+    assert apply_ios_fix_dns(apply_ios_fix_dns(composed)) == apply_ios_fix_dns(composed)

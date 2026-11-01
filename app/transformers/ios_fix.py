@@ -14,6 +14,7 @@ Composed allowlist profiles retain their validated graph, fallback and DNS order
 from __future__ import annotations
 
 import copy
+import logging
 from typing import Any
 
 from app.models.subscription import SubscriptionPayload
@@ -27,6 +28,39 @@ _LEAST_PING_TYPES = frozenset({"leastping", "least_ping"})
 _LEAST_LOAD_TYPES = frozenset({"leastload", "least_load"})
 _ROUND_ROBIN_TYPES = frozenset({"roundrobin", "round_robin"})
 _SYSTEM_PROTOCOLS = frozenset({"freedom", "blackhole", "dns", "loopback"})
+_PROXY_PROTOCOLS = frozenset({"vless", "vmess", "trojan", "shadowsocks", "socks", "http",
+    "hysteria", "hysteria2", "wireguard", "tuic", "shadowsocks2022"})
+logger = logging.getLogger(__name__)
+
+
+def _rule_has_filters(rule: dict[str, Any]) -> bool:
+    # Unknown nonempty match fields are conservatively specific as well. Keep
+    # domainMatcher as metadata: it only changes how an existing domain is read.
+    metadata = {"type", "port", "network", "outboundTag", "balancerTag", "ruleTag", "domainMatcher", "webhook"}
+    return any(value and key not in metadata for key, value in rule.items())
+
+
+def _dns_networks(rule: dict[str, Any]) -> set[str]:
+    value = rule.get("network")
+    if not value:
+        return {"tcp", "udp"}
+    return set(str(value).lower().replace(" ", "").split(",")) & {"tcp", "udp"}
+
+
+def _port_can_match_dns(rule: dict[str, Any]) -> bool:
+    value = rule.get("port")
+    if value is None or value == "":
+        return True
+    for part in str(value).split(","):
+        bounds = part.strip().split("-")
+        try:
+            if len(bounds) == 1 and int(bounds[0]) == 53:
+                return True
+            if len(bounds) == 2 and int(bounds[0]) <= 53 <= int(bounds[1]):
+                return True
+        except ValueError:
+            continue
+    return False
 
 
 def apply_ios_fix(payload: SubscriptionPayload) -> SubscriptionPayload:
@@ -61,68 +95,62 @@ def _inject_routing_rules(config: dict[str, Any]) -> None:
     if is_allowlist_profile(config):
         validate_allowlist_profile(config)
         return  # The graph already includes DNS after its service routes.
-    routing = config.get("routing")
-    if not isinstance(routing, dict):
-        routing = {"domainStrategy": "AsIs", "rules": []}
-        config["routing"] = routing
-
-    rules = routing.get("rules")
-    if not isinstance(rules, list):
-        rules = []
-        routing["rules"] = rules
-
-    target_balancer_tag: str | None = None
-    balancers = routing.get("balancers")
-    if isinstance(balancers, list):
-        for b in balancers:
-            if isinstance(b, dict) and b.get("tag"):
-                target_balancer_tag = str(b["tag"])
-                break
-
-    if not target_balancer_tag:
-        for r in rules:
-            if isinstance(r, dict) and r.get("balancerTag"):
-                target_balancer_tag = str(r["balancerTag"])
-                break
-
+    original_routing = config.get("routing")
+    routing = original_routing if isinstance(original_routing, dict) else {}
+    original_rules = routing.get("rules")
+    rules = original_rules if isinstance(original_rules, list) else []
     outbounds = config.get("outbounds")
-    target_outbound_tag: str | None = None
-    if not target_balancer_tag:
-        for r in rules:
-            if isinstance(r, dict):
-                tag = str(r.get("outboundTag") or "")
-                if tag and tag not in ("direct", "block"):
-                    target_outbound_tag = tag
-                    break
+    outbounds = outbounds if isinstance(outbounds, list) else []
+    tagged = {str(ob["tag"]): ob for ob in outbounds if isinstance(ob, dict) and ob.get("tag")}
+    proxy_tags = [tag for tag, ob in tagged.items()
+                  if str(ob.get("protocol", "")).strip().lower() in _PROXY_PROTOCOLS]
+    balancers = routing.get("balancers")
+    balancers = balancers if isinstance(balancers, list) else []
+    valid_balancers = []
+    for balancer in balancers:
+        if not isinstance(balancer, dict) or not balancer.get("tag"):
+            continue
+        selectors = balancer.get("selector")
+        if not isinstance(selectors, list) or not selectors or any(not isinstance(p, str) or not p for p in selectors):
+            continue
+        members = [tag for tag in tagged if any(tag.startswith(prefix) for prefix in selectors)]
+        fallback = balancer.get("fallbackTag")
+        if members and all(tag in proxy_tags for tag in members) and (not fallback or fallback in proxy_tags):
+            valid_balancers.append(str(balancer["tag"]))
 
-        if not target_outbound_tag and isinstance(outbounds, list):
-            for ob in outbounds:
-                if isinstance(ob, dict):
-                    proto = str(ob.get("protocol") or "").strip().lower()
-                    tag = str(ob.get("tag") or "")
-                    if proto not in _SYSTEM_PROTOCOLS and tag:
-                        target_outbound_tag = tag
-                        break
-        if not target_outbound_tag:
-            target_outbound_tag = "proxy"
+    def has_valid_target(rule: dict[str, Any]) -> bool:
+        outbound = rule.get("outboundTag")
+        balancer = rule.get("balancerTag")
+        return bool((isinstance(outbound, str) and outbound in tagged and not balancer)
+                    or (isinstance(balancer, str) and balancer in valid_balancers and not outbound))
 
-    dns_rule: dict[str, Any] = {
-        "type": "field",
-        "port": 53,
-        "network": "tcp,udp",
-    }
-    if target_balancer_tag:
-        dns_rule["balancerTag"] = target_balancer_tag
+    insertion = len(rules)
+    for index, rule in enumerate(rules):
+        if not isinstance(rule, dict) or _rule_has_filters(rule) or not _dns_networks(rule) or not _port_can_match_dns(rule):
+            continue
+        if rule.get("port") in (53, "53") and _dns_networks(rule) == {"tcp", "udp"} and has_valid_target(rule):
+            return  # Preserve an explicit reachable all-DNS policy, including direct/block.
+        if rule.get("port") in (53, "53") and _dns_networks(rule) != {"tcp", "udp"}:
+            continue  # Keep TCP-only/UDP-only DNS exceptions before the new catch-all.
+        insertion = index
+        break  # Insert before the first broad fallback that could otherwise win.
+
+    target: dict[str, Any] | None = None
+    if valid_balancers:
+        target = {"balancerTag": valid_balancers[0]}
     else:
-        dns_rule["outboundTag"] = target_outbound_tag
-
-    has_dns_rule = any(
-        isinstance(r, dict) and r.get("port") in (53, "53")
-        for r in rules
-    )
-
-    if not has_dns_rule:
-        rules.insert(0, dns_rule)
+        preferred = [rule.get("outboundTag") for rule in rules if isinstance(rule, dict)
+                     and isinstance(rule.get("outboundTag"), str) and rule.get("outboundTag") in proxy_tags]
+        if preferred or proxy_tags:
+            target = {"outboundTag": (preferred or proxy_tags)[0]}
+    if target is None:
+        logger.warning("DNS catch-all not added: no validated proxy target")
+        return  # Do not invent absent tags or turn a system outbound into a proxy.
+    rules.insert(insertion, {"type": "field", "port": 53, "network": "tcp,udp", **target})
+    if not isinstance(original_routing, dict):
+        config["routing"] = {"domainStrategy": "AsIs", "rules": rules}
+    elif not isinstance(original_rules, list):
+        routing["rules"] = rules
 
 
 def _fix_first_inbound(config: dict[str, Any]) -> None:
