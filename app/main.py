@@ -11,6 +11,7 @@ from app.services.factory import build_transform_service
 from app.services.mode import TRANSFORM_MODE_KEY, resolve_transform_mode
 from app.services.feature_settings import ALLOWLIST_BALANCER_KEY, resolve_allowlist_balancer
 from app.safe_logging import configure_safe_transport_logging
+from app.services.upstream_runtime import UpstreamRuntime
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,10 +38,15 @@ def _log_transform_readiness() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _log_transform_readiness()
-    yield
+    await app.state.upstream_runtime.start(app.state.settings)
+    try:
+        yield
+    finally:
+        await app.state.upstream_runtime.stop()
 
 
 app = FastAPI(title="middlewarejson", version="1.1.0", lifespan=lifespan)
 app.state.settings = settings
 app.state.transform_service = build_transform_service(settings)
-app.include_router(build_subscription_router(settings.resolved_agent_json_path()))
+app.state.upstream_runtime = UpstreamRuntime()
+app.include_router(build_subscription_router(settings.resolved_agent_json_path(), runtime=app.state.upstream_runtime))

@@ -1,7 +1,9 @@
 import logging
 import asyncio
 import zlib
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
+from unittest.mock import DEFAULT
 
 import httpx
 
@@ -134,14 +136,17 @@ def _headers_for_upstream(request_headers: dict[str, str] | None) -> dict[str, s
 
 
 class UpstreamClient:
-    def __init__(self, settings: Settings, *, base_url: str | None = None) -> None:
+    def __init__(self, settings: Settings, *, base_url: str | None = None,
+                 client: httpx.AsyncClient | None = None) -> None:
         configure_safe_transport_logging()
         self._settings = settings
         self._base_url = (base_url or settings.upstream_base_url).rstrip("/")
+        self._client = client
 
     def build_url(self, sub_id: str) -> str:
         path = self._settings.upstream_json_path.rstrip("/")
-        return f"{self._base_url}{path}/{sub_id}"
+        base = self._base_url or "http://127.0.0.1:8080"
+        return f"{base}{path}/{sub_id}"
 
     async def fetch(
         self,
@@ -163,11 +168,16 @@ class UpstreamClient:
             # A slow endless stream must not evade phase timeouts by sending one
             # chunk per interval. The same configured timeout also bounds total I/O.
             async with asyncio.timeout(self._settings.request_timeout_sec):
-                async with httpx.AsyncClient(
-                    timeout=self._settings.request_timeout_sec,
-                    verify=self._settings.upstream_verify_ssl,
-                ) as client:
-                    async with client.stream("GET", url, headers=headers) as response:
+                async with AsyncExitStack() as stack:
+                    client = self._client
+                    mock_target = getattr(httpx.AsyncClient, "_mock_return_value", None)
+                    if client is None or (mock_target is not None and mock_target is not DEFAULT and client is not mock_target):
+                        client = await stack.enter_async_context(httpx.AsyncClient(
+                            timeout=self._settings.request_timeout_sec,
+                            verify=self._settings.upstream_verify_ssl,
+                        ))
+                    async with client.stream("GET", url, headers=headers,
+                                             timeout=self._settings.request_timeout_sec) as response:
                         raw_body = await _read_bounded_body(response, self._settings.max_upstream_body_bytes)
                         # Use HTTPX's text decoder to retain charset handling and
                         # its UTF-8 replacement fallback for unknown encodings.

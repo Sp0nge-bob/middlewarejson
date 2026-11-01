@@ -11,6 +11,7 @@ from app.models.subscription import (
 )
 from app.services.upstream import UpstreamClient, UpstreamError
 from app.safe_logging import subscription_log_id
+from app.services.upstream_runtime import UpstreamRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +24,33 @@ def _headers_without_content_type(headers: dict[str, str]) -> dict[str, str]:
     return {key: value for key, value in headers.items() if key.lower() != "content-type"}
 
 
-def build_subscription_router(json_path: str) -> APIRouter:
+class HeldResponse(Response):
+    def __init__(self, inner: Response, release_fn) -> None:
+        self.inner = inner
+        self.release_fn = release_fn
+        self.status_code = inner.status_code
+        self.media_type = inner.media_type
+        self.background = inner.background
+        self.raw_headers = getattr(inner, "raw_headers", [])
+
+    @property
+    def headers(self):
+        return self.inner.headers
+
+    @property
+    def body(self):
+        return getattr(self.inner, "body", b"")
+
+    async def __call__(self, scope, receive, send) -> None:
+        try:
+            await self.inner(scope, receive, send)
+        finally:
+            self.release_fn()
+
+
+def build_subscription_router(json_path: str, *, runtime: UpstreamRuntime | None = None) -> APIRouter:
     router = APIRouter()
+    runtime = runtime or UpstreamRuntime()
     route_path = f"{json_path.rstrip('/')}/{{sub_id}}"
 
     @router.api_route(
@@ -36,8 +62,24 @@ def build_subscription_router(json_path: str) -> APIRouter:
         if not validate_sub_id(sub_id):
             return PlainTextResponse(status_code=400, content="invalid sub_id")
 
+        lease = runtime.acquire(request.app.state.settings.max_inflight_subscriptions)
+        if not lease.admitted:
+            return PlainTextResponse(
+                status_code=503,
+                content="subscription service busy",
+                headers={"Retry-After": "1", "Cache-Control": "no-store"},
+            )
+
+        try:
+            response = await serve_subscription(sub_id, request)
+            return HeldResponse(response, lease.release)
+        except BaseException:
+            lease.release()
+            raise
+
+    async def serve_subscription(sub_id: str, request: Request) -> Response:
         settings = request.app.state.settings
-        upstream = UpstreamClient(settings, base_url=settings.resolved_upstream_base_url())
+        upstream = UpstreamClient(settings, base_url=settings.resolved_upstream_base_url(), client=runtime.client)
         query_string = request.url.query
 
         try:
@@ -60,7 +102,7 @@ def build_subscription_router(json_path: str) -> APIRouter:
             return PlainTextResponse(status_code=result.status_code, content=result.body, headers=error_headers)
 
         try:
-            payload = try_load_json_subscription(result.body)
+            payload = try_load_json_subscription(result.body, max_depth=settings.max_json_depth)
         except (json.JSONDecodeError, ValueError, TypeError) as exc:
             logger.warning(
                 "invalid upstream json subscription=%s error_type=%s",

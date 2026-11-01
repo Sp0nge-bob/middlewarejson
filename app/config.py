@@ -39,6 +39,12 @@ class Settings(BaseSettings):
         gt=0,
         validation_alias="MAX_UPSTREAM_BODY_BYTES",
     )
+    max_inflight_subscriptions: int = Field(
+        default=8, gt=0, validation_alias="MAX_INFLIGHT_SUBSCRIPTIONS",
+    )
+    max_json_depth: int = Field(
+        default=64, gt=0, le=128, validation_alias="MAX_JSON_DEPTH",
+    )
     upstream_verify_ssl: bool = Field(
         default=True,
         validation_alias="UPSTREAM_VERIFY_SSL",
