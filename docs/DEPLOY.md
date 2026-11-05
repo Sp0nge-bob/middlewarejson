@@ -2,9 +2,24 @@
 
 Руководство для VPS с nginx и systemd. Подходит для машин от 1 CPU / 1 GB RAM.
 
-## 1. Установка
+## 1. Автоматическая установка (рекомендуется)
+
+На чистом сервере Debian / Ubuntu / CentOS выполните установку одной строкой:
 
 ```bash
+bash <(curl -Ls https://raw.githubusercontent.com/Sp0nge-bob/middlewarejson/main/install.sh)
+```
+
+Скрипт сам установит системные зависимости (`python3-venv`, `git`, `pip`), настроит виртуальное окружение, развернёт `systemd`-службу и добавит глобальную команду `middlewarejson` (`mwjson`).
+
+---
+
+## 1.1. Ручная установка
+
+```bash
+# Для Debian / Ubuntu обязательно наличие python3-venv:
+sudo apt update && sudo apt install -y git python3 python3-venv python3-pip
+
 sudo mkdir -p /opt
 sudo git clone https://github.com/Sp0nge-bob/middlewarejson.git /opt/middlewarejson
 cd /opt/middlewarejson

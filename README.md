@@ -21,9 +21,36 @@
 - Linux (для production и systemd; разработка возможна на Windows)
 - Панель 3x-ui с JSON-подписками
 
-## Быстрый старт
+## Быстрый старт (Установка в одну строку)
+
+Установка на любой чистый сервер (**Debian 11/12/13**, **Ubuntu**, **CentOS/Alma/Rocky**) одной командой (аналогично 3x-ui):
 
 ```bash
+bash <(curl -Ls https://raw.githubusercontent.com/Sp0nge-bob/middlewarejson/main/install.sh)
+```
+
+или через `wget`:
+
+```bash
+bash <(wget -qO- https://raw.githubusercontent.com/Sp0nge-bob/middlewarejson/main/install.sh)
+```
+
+Скрипт автоматически:
+1. Установит все системные пакеты (`git`, `python3`, `python3-venv`, `pip`, `curl`).
+2. Склонирует репозиторий и настроит виртуальное окружение `.venv`.
+3. Создаст `.env` и настроит права доступа.
+4. Установит глобальную команду `middlewarejson` (и короткий алиас `mwjson`).
+5. Зарегистрирует и запустит службу `systemd` (`middlewarejson.service`).
+6. Предложит сразу открыть интерактивное меню настройки.
+
+---
+
+### Ручная установка (для разработки)
+
+```bash
+# Для Debian / Ubuntu:
+apt update && apt install -y git python3 python3-venv python3-pip
+
 git clone https://github.com/Sp0nge-bob/middlewarejson.git
 cd middlewarejson
 
