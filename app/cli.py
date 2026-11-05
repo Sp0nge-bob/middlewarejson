@@ -410,6 +410,16 @@ def service_stop_cmd() -> None:
         raise typer.Exit(1)
 
 
+@service_app.command("migrate-to-opt")
+@app.command("migrate-to-opt")
+def service_migrate_to_opt_cmd() -> None:
+    """Мигрировать проект из /root/middlewarejson в /opt/middlewarejson."""
+    from app.cli_service import run_migrate_to_opt
+
+    run_migrate_to_opt()
+
+
+
 def main() -> None:
     app()
 

@@ -326,12 +326,19 @@ def show_service_logs(*, lines: int = 40) -> None:
 
 
 def run_service_menu(status_menu, install_menu) -> None:
+    from pathlib import Path
     while True:
         console.print()
         print_section("Служба")
         print_menu_item(1, "Статус")
         print_menu_item(2, "Установить systemd")
         print_menu_item(3, "Логи")
+        is_in_root = (
+            Path("/root/middlewarejson").is_dir()
+            and not Path("/root/middlewarejson").is_symlink()
+        )
+        if is_in_root:
+            print_menu_item(4, "Мигрировать в /opt/middlewarejson")
         print_menu_item(0, "Назад")
         choice = prompt_line("Выбор [0 — назад]")
         if choice == "0" or not choice:
@@ -342,5 +349,8 @@ def run_service_menu(status_menu, install_menu) -> None:
             install_menu()
         elif choice == "3":
             show_service_logs()
+        elif choice == "4" and is_in_root:
+            from app.cli_service import run_migrate_to_opt
+            run_migrate_to_opt()
         else:
             print_warning("Неизвестный пункт")

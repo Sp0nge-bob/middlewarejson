@@ -75,12 +75,31 @@ fi
 PY_VER="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
 info "Обнаружен Python версии: $PY_VER"
 
-# 3. Определение директории установки
+# 3. Определение директории установки (дефолт: /opt/middlewarejson)
+DEFAULT_DIR="/opt/middlewarejson"
+LEGACY_ROOT_DIR="/root/middlewarejson"
+
 if [[ -f "$(pwd)/app/main.py" && -f "$(pwd)/requirements.txt" ]]; then
     APP_DIR="$(pwd)"
     info "Установка в текущую директорию: $APP_DIR"
+elif [[ -d "$DEFAULT_DIR" ]]; then
+    APP_DIR="$DEFAULT_DIR"
+    info "Директория установки: $APP_DIR"
+elif [[ -d "$LEGACY_ROOT_DIR" && ! -L "$LEGACY_ROOT_DIR" ]]; then
+    # Мягкая миграция из /root/middlewarejson в /opt/middlewarejson
+    warn "Обнаружена существующая установка в $LEGACY_ROOT_DIR."
+    info "Выполняется мягкая миграция в $DEFAULT_DIR с сохранением симлинка $LEGACY_ROOT_DIR..."
+    systemctl stop middlewarejson 2>/dev/null || true
+    mkdir -p /opt
+    cp -a "$LEGACY_ROOT_DIR" "$DEFAULT_DIR"
+    rm -rf "$DEFAULT_DIR/.venv"
+    backup_legacy="${LEGACY_ROOT_DIR}.bak.$(date +%s)"
+    mv "$LEGACY_ROOT_DIR" "$backup_legacy"
+    ln -s "$DEFAULT_DIR" "$LEGACY_ROOT_DIR"
+    APP_DIR="$DEFAULT_DIR"
+    success "Проект успешно перенесен в $DEFAULT_DIR (для обратной совместимости оставлен симлинк $LEGACY_ROOT_DIR)"
 else
-    APP_DIR="${APP_DIR:-/root/middlewarejson}"
+    APP_DIR="${APP_DIR:-$DEFAULT_DIR}"
     info "Директория установки: $APP_DIR"
 fi
 

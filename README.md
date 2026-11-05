@@ -23,7 +23,7 @@
 
 ## Быстрый старт (Установка в одну строку)
 
-Установка на любой чистый сервер (**Debian 11/12/13**, **Ubuntu**, **CentOS/Alma/Rocky**) одной командой (аналогично 3x-ui):
+Установка на любой чистый сервер (**Debian 11/12/13**, **Ubuntu**, **CentOS/Alma/Rocky**) одной командой:
 
 ```bash
 bash <(curl -Ls https://raw.githubusercontent.com/Sp0nge-bob/middlewarejson/main/install.sh)
@@ -35,13 +35,28 @@ bash <(curl -Ls https://raw.githubusercontent.com/Sp0nge-bob/middlewarejson/main
 bash <(wget -qO- https://raw.githubusercontent.com/Sp0nge-bob/middlewarejson/main/install.sh)
 ```
 
+По умолчанию проект устанавливается в `/opt/middlewarejson`.
+
 Скрипт автоматически:
 1. Установит все системные пакеты (`git`, `python3`, `python3-venv`, `pip`, `curl`).
-2. Склонирует репозиторий и настроит виртуальное окружение `.venv`.
-3. Создаст `.env` и настроит права доступа.
-4. Установит глобальную команду `middlewarejson` (и короткий алиас `mwjson`).
-5. Зарегистрирует и запустит службу `systemd` (`middlewarejson.service`).
-6. Предложит сразу открыть интерактивное меню настройки.
+2. Склонирует репозиторий в `/opt/middlewarejson` (с мягкой обратной совместимостью для старых установок в `/root/middlewarejson`).
+3. Настроит виртуальное окружение `.venv` и установит зависимости.
+4. Создаст `.env` и настроит права доступа.
+5. Установит глобальную команду `middlewarejson` (и короткий алиас `mwjson`).
+6. Зарегистрирует и запустит службу `systemd` (`middlewarejson.service`).
+7. Предложит сразу открыть интерактивное меню настройки.
+
+---
+
+### Миграция из `/root/middlewarejson` в `/opt/middlewarejson`
+
+Если ранее проект был установлен в `/root/middlewarejson`, его можно легко мигрировать в `/opt/middlewarejson` с автоматическим обновлением службы и сохранением симлинка для обратной совместимости:
+
+```bash
+middlewarejson migrate-to-opt
+# или напрямую через скрипт:
+bash /opt/middlewarejson/deploy/migrate-to-opt.sh
+```
 
 ---
 
@@ -49,10 +64,11 @@ bash <(wget -qO- https://raw.githubusercontent.com/Sp0nge-bob/middlewarejson/mai
 
 ```bash
 # Для Debian / Ubuntu:
-apt update && apt install -y git python3 python3-venv python3-pip
+sudo apt update && sudo apt install -y git python3 python3-venv python3-pip
 
-git clone https://github.com/Sp0nge-bob/middlewarejson.git
-cd middlewarejson
+sudo mkdir -p /opt
+sudo git clone https://github.com/Sp0nge-bob/middlewarejson.git /opt/middlewarejson
+cd /opt/middlewarejson
 
 python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate

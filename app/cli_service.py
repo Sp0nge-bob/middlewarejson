@@ -197,3 +197,28 @@ def run_install_systemd() -> None:
         print_info(f"Проверка: systemctl {'--user ' if 'user' in message else ''}status middlewarejson")
     else:
         print_error(message)
+
+
+def run_migrate_to_opt() -> None:
+    """Выполнить миграцию проекта из /root/middlewarejson в /opt/middlewarejson."""
+    if not is_linux():
+        print_warning("Миграция доступна только на Linux")
+        return
+
+    root = detect_project_root()
+    script = root / "deploy" / "migrate-to-opt.sh"
+    if not script.is_file():
+        for candidate in (
+            Path("/opt/middlewarejson/deploy/migrate-to-opt.sh"),
+            Path("/root/middlewarejson/deploy/migrate-to-opt.sh"),
+        ):
+            if candidate.is_file():
+                script = candidate
+                break
+
+    if not script.is_file():
+        print_error("Скрипт deploy/migrate-to-opt.sh не найден")
+        return
+
+    import subprocess
+    subprocess.run(["bash", str(script)], check=False)
