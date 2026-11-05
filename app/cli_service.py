@@ -222,3 +222,69 @@ def run_migrate_to_opt() -> None:
 
     import subprocess
     subprocess.run(["bash", str(script)], check=False)
+
+
+def run_update_repo() -> bool:
+    """Обновить репозиторий через deploy/update.sh или git."""
+    root = detect_project_root()
+    script = root / "deploy" / "update.sh"
+    if not script.is_file():
+        for candidate in (
+            Path("/opt/middlewarejson/deploy/update.sh"),
+            Path("/root/middlewarejson/deploy/update.sh"),
+        ):
+            if candidate.is_file():
+                script = candidate
+                break
+
+    console.print()
+    print_info("Проверка и обновление репозитория...")
+
+    import subprocess
+
+    if is_linux() and script.is_file():
+        result = subprocess.run(["bash", str(script)], check=False)
+        if result.returncode == 0:
+            print_success("Обновление завершено")
+            print_info("Для применения изменений в текущем терминале перезапустите команду middlewarejson")
+            return True
+        print_error(f"Скрипт обновления завершился с кодом {result.returncode}")
+        return False
+
+    try:
+        fetch = subprocess.run(
+            ["git", "fetch", "origin", "main"],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if fetch.returncode != 0:
+            print_error(f"git fetch завершился с ошибкой: {fetch.stderr.strip()}")
+            return False
+
+        merge = subprocess.run(
+            ["git", "merge", "--ff-only", "origin/main"],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if merge.returncode != 0:
+            print_error(f"git merge завершился с ошибкой: {merge.stderr.strip()}")
+            return False
+
+        out = merge.stdout.strip()
+        if "Already up to date" in out or "Уже обновлено" in out:
+            print_success("Репозиторий уже актуален (обновлений нет)")
+        else:
+            print_success(f"Обновлено: {out}")
+            uvicorn_path = detect_uvicorn_path(root)
+            pip_exe = uvicorn_path.parent / ("pip.exe" if not is_linux() else "pip")
+            if pip_exe.is_file():
+                subprocess.run([str(pip_exe), "install", "-r", "requirements.txt", "-q"], cwd=str(root), check=False)
+        return True
+    except Exception as exc:
+        print_error(f"Не удалось обновить репозиторий: {exc}")
+        return False
+

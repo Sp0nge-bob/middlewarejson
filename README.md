@@ -116,8 +116,11 @@ python -m app.cli
 | 3 | Служба systemd |
 | 4 | Проверить подписку |
 | 5 | Запуск uvicorn вручную |
+| 6 | Обновить репозиторий |
 
 ```bash
+middlewarejson update
+python -m app.cli update
 python -m app.cli settings show
 python -m app.cli settings transform-mode ios-fix
 python -m app.cli settings transform-mode ios-fix-dns

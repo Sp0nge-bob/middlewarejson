@@ -204,6 +204,7 @@ def _print_interactive_menu() -> None:
     print_menu_item(3, "Служба systemd")
     print_menu_item(4, "Проверить подписку")
     print_menu_item(5, f"Запустить агент вручную (:{settings.agent_port})")
+    print_menu_item(6, "Обновить репозиторий")
     console.print()
     print_menu_item(0, "Выход")
 
@@ -237,6 +238,10 @@ def run_interactive_menu() -> None:
             run_preview_interactive()
         elif choice == "5":
             _do_run_server()
+        elif choice == "6":
+            from app.cli_service import run_update_repo
+
+            run_update_repo()
         else:
             print_warning("Неизвестный пункт")
 
@@ -417,6 +422,18 @@ def service_migrate_to_opt_cmd() -> None:
     from app.cli_service import run_migrate_to_opt
 
     run_migrate_to_opt()
+
+
+@service_app.command("update")
+@app.command("update")
+def service_update_cmd() -> None:
+    """Проверить и обновить репозиторий origin/main."""
+    from app.cli_service import run_update_repo
+
+    ok = run_update_repo()
+    if not ok:
+        raise typer.Exit(1)
+
 
 
 
